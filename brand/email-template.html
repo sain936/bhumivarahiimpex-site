@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Branded Email | Bhumi Varahi Impex</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #f1f5f9; color: #1e293b; margin: 0; padding: 32px 16px; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .card { background: #fff; border-radius: 12px; padding: 28px; box-shadow: 0 2px 12px rgba(0,0,0,.06); margin-bottom: 20px; }
+  h1 { font-size: 20px; color: #1B4D3E; margin: 0 0 6px; }
+  ol { line-height: 1.7; padding-left: 20px; }
+  button { background: #1B4D3E; color: #fff; border: 0; border-radius: 8px; padding: 10px 18px; font-weight: bold; cursor: pointer; }
+  #ok { color: #1B4D3E; font-weight: bold; margin-left: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>Bhumi Varahi Impex branded email</h1>
+    <ol>
+      <li>Click <b>Copy email</b> below.</li>
+      <li>In Gmail, click <b>Compose</b> and paste with <b>Ctrl+V</b> into the message area.</li>
+      <li>Replace the [bracketed] text, add the recipient and subject, then send.</li>
+      <li>Tip: in Gmail Settings &rarr; Advanced, turn on <b>Templates</b>. Then use the three-dot menu &rarr; Templates &rarr; Save draft as template, so it's one click next time.</li>
+    </ol>
+    <button id="copy">Copy email</button><span id="ok"></span>
+  </div>
+  <div id="sig">
+<!-- EMAIL START -->
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f1f5f9;padding:24px 0;font-family:Arial,Helvetica,sans-serif;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;">
+  <tr><td style="padding:26px 32px 18px 32px;">
+    <a href="https://www.bhumivarahiimpex.com"><img src="https://www.bhumivarahiimpex.com/brand/email-logo.png" width="220" alt="Bhumi Varahi Impex Pvt. Ltd." style="display:block;border:0;width:220px;height:auto;"></a>
+  </td></tr>
+  <tr><td style="height:3px;line-height:3px;font-size:0;background:#D4AF37;">&nbsp;</td></tr>
+  <tr><td style="height:2px;line-height:2px;font-size:0;background:#1B4D3E;">&nbsp;</td></tr>
+  <tr><td style="padding:30px 32px 8px 32px;color:#1e293b;font-size:15px;line-height:24px;">
+    <p style="margin:0 0 16px 0;">Dear [Name],</p>
+    <p style="margin:0 0 16px 0;">[Write your message here. State the purpose in the first line, then the key details: product, grade, quantity, Incoterm and port.]</p>
+    <p style="margin:0 0 24px 0;">[Next step or request.]</p>
+    <table cellpadding="0" cellspacing="0" border="0"><tr><td style="background:#1B4D3E;border-radius:6px;">
+      <a href="https://www.bhumivarahiimpex.com/#rfq" style="display:inline-block;padding:12px 22px;color:#ffffff;font-weight:bold;font-size:14px;text-decoration:none;">Request a Quotation</a>
+    </td></tr></table>
+    <p style="margin:28px 0 4px 0;">Warm regards,</p>
+    <p style="margin:0;font-weight:bold;color:#1B4D3E;">[Your Name]</p>
+    <p style="margin:0;font-size:13px;color:#B8860B;font-weight:bold;">[Designation]</p>
+    <p style="margin:0 0 24px 0;font-size:13px;color:#475569;">Bhumi Varahi Impex Private Limited</p>
+  </td></tr>
+  <tr><td style="background:#0E2820;padding:20px 32px;color:#cbd5e1;font-size:12px;line-height:19px;">
+    <span style="color:#E5C158;font-weight:bold;letter-spacing:1px;">BHUMI VARAHI IMPEX PRIVATE LIMITED</span><br>
+    Merchant exporters of rice, spices and industrial goods &bull; Kakinada &bull; Visakhapatnam &bull; Chennai, India<br>
+    <a href="mailto:info@bhumivarahiimpex.com" style="color:#ffffff;text-decoration:none;">info@bhumivarahiimpex.com</a> &nbsp;|&nbsp; <a href="https://www.bhumivarahiimpex.com" style="color:#E5C158;text-decoration:none;">www.bhumivarahiimpex.com</a>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+<!-- EMAIL END -->
+  </div>
+</div>
+<script>
+  document.getElementById('copy').addEventListener('click', async () => {
+    const el = document.getElementById('sig');
+    const html = el.innerHTML;
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([el.innerText], { type: 'text/plain' }) })]);
+    } catch (e) {
+      const r = document.createRange(); r.selectNodeContents(el);
+      const s = getSelection(); s.removeAllRanges(); s.addRange(r); document.execCommand('copy'); s.removeAllRanges();
+    }
+    document.getElementById('ok').textContent = 'Copied! Now paste it into a new Gmail message.';
+  });
+</script>
+</body>
+</html>
