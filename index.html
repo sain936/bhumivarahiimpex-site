@@ -2,6 +2,10 @@
 <html lang="en" class="scroll-smooth">
 <head>
   <meta charset="UTF-8" />
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-822DQESRXK"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-822DQESRXK');
+  document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a[href*="wa.me"]');if(a)gtag('event','whatsapp_click',{link_url:a.href,page_path:location.pathname});});</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BHUMI VARAHI IMPEX PVT. LTD. | Trusted Global Trade Partner &amp; Merchant Exporters</title>
   <meta name="description" content="India's premier international trading enterprise. Direct origin sourcing, premium agricultural commodities, industrial goods, and reliable end-to-end supply chain logistics." />
@@ -1047,6 +1051,7 @@
         setSending(true);
         try {
           await fetch(SHEETS_URL, { method: 'POST', mode: 'no-cors', body: new URLSearchParams(data) });
+          if (window.gtag) gtag('event', 'generate_lead', { commodity: commodity, method: 'rfq_form' });
           showToast(`RFQ Received for ${name}`, `Your inquiry for ${commodity} has been sent to our export desk.`);
           rfqForm.reset();
         } catch (err) {

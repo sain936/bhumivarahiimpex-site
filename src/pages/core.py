@@ -17,6 +17,10 @@ def shell(path, title, desc, crumbs, body, ld):
 <html lang="en" class="scroll-smooth">
 <head>
   <meta charset="UTF-8" />
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-822DQESRXK"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){{dataLayer.push(arguments);}}gtag('js',new Date());gtag('config','G-822DQESRXK');
+  document.addEventListener('click',function(e){{var a=e.target.closest&&e.target.closest('a[href*="wa.me"]');if(a)gtag('event','whatsapp_click',{{link_url:a.href,page_path:location.pathname}});}});</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{html.escape(title)}</title>
   <meta name="description" content="{html.escape(desc)}" />
