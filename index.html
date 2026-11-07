@@ -936,11 +936,15 @@
     const toastBody = document.getElementById('toastBody');
 
     // ===== RFQ FORM DELIVERY =====
-    // Get a free access key at https://web3forms.com (enter the inbox that should receive RFQs)
-    // and paste it below. Until then, the form opens the visitor's email app instead.
+    // 1) Google Sheets: paste your Apps Script web app URL below (see integrations/README.md).
+    //    Every RFQ is saved to the sheet and emailed to the export desk.
+    // 2) Optional: Web3Forms key, used only if the Sheets URL is empty.
+    // If neither is set, the form opens the visitor's email app instead.
+    const SHEETS_URL = 'PASTE_APPS_SCRIPT_URL_HERE';
     const WEB3FORMS_KEY = 'YOUR_WEB3FORMS_ACCESS_KEY';
     const RFQ_INBOX = 'info@bhumivarahiimpex.com';
     const rfqSubmit = document.getElementById('rfqSubmit');
+    const isSet = v => v && !v.startsWith('YOUR_') && !v.startsWith('PASTE_');
 
     function showToast(title, body) {
       toastTitle.textContent = title;
@@ -954,6 +958,11 @@
       }, 6000);
     }
 
+    function setSending(on) {
+      rfqSubmit.disabled = on;
+      rfqSubmit.textContent = on ? 'Sending...' : 'Submit Formal RFQ';
+    }
+
     rfqForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const data = new FormData(rfqForm);
@@ -961,7 +970,21 @@
       const name = data.get('name') || 'Buyer';
       const commodity = data.get('commodity');
 
-      if (!WEB3FORMS_KEY || WEB3FORMS_KEY.startsWith('YOUR_')) {
+      if (isSet(SHEETS_URL)) {
+        setSending(true);
+        try {
+          await fetch(SHEETS_URL, { method: 'POST', mode: 'no-cors', body: new URLSearchParams(data) });
+          showToast(`RFQ Received for ${name}`, `Your inquiry for ${commodity} has been sent to our export desk.`);
+          rfqForm.reset();
+        } catch (err) {
+          showToast('Could not send RFQ', `Please email us directly at ${RFQ_INBOX}.`);
+        } finally {
+          setSending(false);
+        }
+        return;
+      }
+
+      if (!isSet(WEB3FORMS_KEY)) {
         const body = `Company / Buyer: ${name}\nEmail: ${data.get('email')}\nPhone / WhatsApp: ${data.get('phone') || '-'}\nDestination country: ${data.get('country') || '-'}\nCommodity: ${commodity}\nQuantity: ${data.get('quantity')}\nPort & packaging: ${data.get('notes')}`;
         window.location.href = `mailto:${RFQ_INBOX}?subject=${encodeURIComponent('RFQ: ' + commodity + ' - ' + name)}&body=${encodeURIComponent(body)}`;
         return;
@@ -970,8 +993,7 @@
       data.append('access_key', WEB3FORMS_KEY);
       data.append('subject', `New RFQ: ${commodity} from ${name}`);
       data.append('from_name', 'Bhumi Varahi Impex Website');
-      rfqSubmit.disabled = true;
-      rfqSubmit.textContent = 'Sending...';
+      setSending(true);
       try {
         const res = await fetch('https://api.web3forms.com/submit', { method: 'POST', body: data });
         const json = await res.json();
@@ -981,8 +1003,7 @@
       } catch (err) {
         showToast('Could not send RFQ', `Please email us directly at ${RFQ_INBOX}.`);
       } finally {
-        rfqSubmit.disabled = false;
-        rfqSubmit.textContent = 'Submit Formal RFQ';
+        setSending(false);
       }
     });
   </script>

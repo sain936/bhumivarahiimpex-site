@@ -2,5 +2,6 @@ User-agent: *
 Allow: /
 Disallow: /letterhead/
 Disallow: /brand/
+Disallow: /integrations/
 
 Sitemap: https://www.bhumivarahiimpex.com/sitemap.xml
