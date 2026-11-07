@@ -10,7 +10,11 @@
 const SHEET_NAME = 'RFQs';
 const NOTIFY_EMAIL = 'info@bhumivarahiimpex.com';
 const HEADERS = ['Received', 'RFQ No.', 'Company / Buyer', 'Email', 'Phone / WhatsApp', 'Country',
-                 'Commodity', 'Quantity', 'Port & Packaging', 'Status', 'Notes (internal)'];
+                 'Commodity', 'Quantity', 'Specs & notes', 'Status', 'Notes (internal)',
+                 'Contact person', 'Grade / type', 'Destination port', 'Incoterm', 'Packing', 'Bag branding',
+                 'Shipment', 'Payment terms'];
+// Form fields stored in columns 12-19, in this order (added Nov 2026).
+const EXTRA_FIELDS = ['contact', 'grade', 'port', 'incoterm', 'packing', 'label', 'shipment', 'payment'];
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
@@ -45,7 +49,8 @@ function doPost(e) {
     }
 
     sheet.appendRow([new Date(), p.ref, clean(p.name), clean(p.email), clean(p.phone), clean(p.country),
-                     clean(p.commodity), clean(p.quantity), clean(p.notes), 'New', '']);
+                     clean(p.commodity), clean(p.quantity), clean(p.notes), 'New', '']
+                     .concat(EXTRA_FIELDS.map(k => clean(p[k]))));
 
     notify_(p);
     try { acknowledge_(p); } catch (ackErr) { console.warn('Buyer acknowledgement failed: ' + ackErr); }
@@ -66,7 +71,7 @@ function getSheet_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) sheet = ss.insertSheet(SHEET_NAME);
-  if (sheet.getLastRow() > 0) migrateRfqNo_(sheet);
+  if (sheet.getLastRow() > 0) { migrateRfqNo_(sheet); addNewColumns_(sheet); }
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(HEADERS);
     sheet.getRange(1, 1, 1, HEADERS.length)
@@ -83,6 +88,17 @@ function getSheet_() {
 
 // Older sheets had no RFQ No. column (the reference sat in Notes as "Ref: BV-...").
 // This inserts the column as B once, and moves each existing reference into it.
+// Adds the newer form columns (Contact person ... Payment terms) to an older sheet, once.
+function addNewColumns_(sheet) {
+  const width = Math.max(sheet.getLastColumn(), HEADERS.length);
+  const head = sheet.getRange(1, 1, 1, width).getValues()[0];
+  if (String(head[HEADERS.length - 1]) === HEADERS[HEADERS.length - 1]) return;
+  if (String(head[8]) === 'Port & Packaging') sheet.getRange(1, 9).setValue('Specs & notes');
+  const start = 12, n = HEADERS.length - start + 1;
+  sheet.getRange(1, start, 1, n).setValues([HEADERS.slice(start - 1)])
+    .setFontWeight('bold').setBackground('#1B4D3E').setFontColor('#FFFFFF');
+}
+
 function migrateRfqNo_(sheet) {
   if (String(sheet.getRange(1, 2).getValue()) === 'RFQ No.') return;
   sheet.insertColumnBefore(2);
@@ -104,7 +120,10 @@ function notify_(p) {
     <div style="background:#1B4D3E;color:#E5C158;padding:14px 18px;font-weight:bold;letter-spacing:1px;">NEW REQUEST FOR QUOTATION</div>
     <table style="border-collapse:collapse;font-size:14px;margin:10px 6px;">
       ${row('RFQ No.', p.ref)}${row('Company / Buyer', p.name)}${row('Email', p.email)}${row('Phone / WhatsApp', p.phone)}
-      ${row('Country', p.country)}${row('Commodity', p.commodity)}${row('Quantity', p.quantity)}${row('Port & packaging', p.notes)}
+      ${row('Contact person', p.contact)}${row('Country', p.country)}${row('Destination port', p.port)}
+      ${row('Commodity', p.commodity)}${row('Grade / type', p.grade)}${row('Quantity', p.quantity)}${row('Incoterm', p.incoterm)}
+      ${row('Packing', p.packing)}${row('Bag branding', p.label)}${row('Shipment', p.shipment)}${row('Payment terms', p.payment)}
+      ${row('Specs & notes', p.notes)}
     </table>
     <div style="background:#0E2820;color:#cbd5e1;padding:10px 18px;font-size:12px;">Reply to this email to answer the buyer directly. Saved in the RFQs sheet.</div>
   </div>`;
@@ -122,7 +141,7 @@ function acknowledge_(p) {
   const email = String(p.email || '').trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
   const esc = s => String(s || '-').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const name = esc(p.name || 'Sir / Madam');
+  const name = esc(p.contact || p.name || 'Sir / Madam');
   const row = (k, v) => `<tr><td style="padding:6px 12px;color:#5A6A72;width:150px;">${k}</td><td style="padding:6px 12px;color:#1e293b;font-weight:bold;">${esc(v)}</td></tr>`;
   const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
     <div style="background:#1B4D3E;padding:18px 24px;border-bottom:3px solid #C9A227;">
@@ -135,7 +154,7 @@ function acknowledge_(p) {
       <div style="background:#F8F5EC;border-left:3px solid #C9A227;border-radius:4px;padding:8px 4px;margin:0 0 18px;">
         <div style="padding:4px 12px;font-size:12px;letter-spacing:1px;color:#8A6508;font-weight:bold;">YOUR REQUEST</div>
         <table style="border-collapse:collapse;font-size:14px;">
-          ${row('RFQ No.', p.ref)}${row('Company', p.name)}${row('Email / Phone', [p.email, p.phone].filter(Boolean).join('  |  '))}${row('Commodity', p.commodity)}${row('Quantity', p.quantity)}${row('Destination country', p.country)}${row('Port & packaging', p.notes)}
+          ${row('RFQ No.', p.ref)}${row('Company', p.name)}${row('Email / Phone', [p.email, p.phone].filter(Boolean).join('  |  '))}${row('Contact person', p.contact)}${row('Commodity', p.commodity)}${row('Grade / type', p.grade)}${row('Quantity', p.quantity)}${row('Destination', [p.port, p.country].filter(Boolean).join(', '))}${row('Incoterm', p.incoterm)}${row('Packing', p.packing)}${row('Bag branding', p.label)}${row('Shipment', p.shipment)}${row('Payment terms', p.payment)}${row('Other specifications', p.notes)}
         </table>
       </div>
       <p style="margin:0 0 14px;font-size:13px;color:#5A6A72;">Please quote your RFQ No. <strong style="color:#1B4D3E;">${esc(p.ref)}</strong> in any reply, and you will find it on our quotation.</p>
@@ -147,7 +166,7 @@ function acknowledge_(p) {
       <a href="https://www.bhumivarahiimpex.com" style="color:#E5C158;text-decoration:none;">www.bhumivarahiimpex.com</a>
     </div>
   </div>`;
-  const text = `Dear ${p.name || 'Sir / Madam'},\n\nThank you for your request for quotation. We have received it, and our export desk is now working on your quotation. We will be in touch as soon as the quotation is ready.\n\nRFQ No.: ${p.ref}\nCommodity: ${p.commodity || '-'}\nQuantity: ${p.quantity || '-'}\n\nWarm regards,\nExport Desk, Bhumi Varahi Impex Pvt Ltd\n${NOTIFY_EMAIL} | WhatsApp +91 94929 92666 | www.bhumivarahiimpex.com`;
+  const text = `Dear ${p.contact || p.name || 'Sir / Madam'},\n\nThank you for your request for quotation. We have received it, and our export desk is now working on your quotation. We will be in touch as soon as the quotation is ready.\n\nRFQ No.: ${p.ref}\nCommodity: ${p.commodity || '-'}\nQuantity: ${p.quantity || '-'}\nDestination: ${[p.port, p.country].filter(Boolean).join(', ') || '-'}\nIncoterm: ${p.incoterm || '-'}\nPacking: ${p.packing || '-'}\n\nWarm regards,\nExport Desk, Bhumi Varahi Impex Pvt Ltd\n${NOTIFY_EMAIL} | WhatsApp +91 94929 92666 | www.bhumivarahiimpex.com`;
   sendMail_({
     to: email,
     replyTo: NOTIFY_EMAIL,
@@ -488,6 +507,7 @@ function resendRow_(sheet, row, confirm) {
   const r = sheet.getRange(row, 1, 1, HEADERS.length).getValues()[0];
   const p = { ref: String(r[1] || ''), name: r[2], email: String(r[3] || '').trim(), phone: r[4], country: r[5],
               commodity: r[6], quantity: r[7], notes: r[8] };
+  EXTRA_FIELDS.forEach((k, i) => { p[k] = r[11 + i]; });
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email)) return 'Row ' + row + ' has no valid buyer email. Fix the Email column and try again.';
   if (!p.ref) {
     p.ref = 'BV-' + Utilities.formatDate(isDate_(r[0]) ? r[0] : new Date(), 'Asia/Kolkata', 'yyMMdd-HHmmss');

@@ -1,4 +1,5 @@
 import html, json
+import rfqfields
 from urllib.parse import quote
 from core import SITE, WAICON, G_TAG
 e=html.escape
@@ -142,15 +143,7 @@ def page(code,t,L,groups,SHEETS_URL,CAT):
           <ul class="space-y-3 pt-4 text-sm text-emerald-100">{''.join(f'<li class="flex gap-3"><span class="text-brand-warmGold font-bold">✓</span>{e(a)}</li>' for a,_ in t['why'])}</ul></div>
         <form id="rfqForm" class="lg:col-span-3 glass-card rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl">
           <input type="checkbox" name="botcheck" class="hidden" tabindex="-1" autocomplete="off" />
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {field('buyerName','name',t['f_name'],ph=t['ph_name'],req=True,ac='organization')}
-            {field('buyerEmail','email',t['f_email'],typ='email',ph='procurement@buyer.com',req=True,ac='email')}
-            <div><label for="commoditySelect" class="{lab}">{e(t['f_comm'])}</label><select id="commoditySelect" name="commodity" class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-white/20 text-white text-sm" dir="ltr">{opts}</select></div>
-            {field('quantity','quantity',t['f_qty'],ph=t['ph_qty'])}
-            {field('country','country',t['f_country'],ph=t['ph_country'],ac='country-name')}
-            <div><label for="phone" class="{lab}">{e(t['f_phone'])}</label><div class="flex gap-2" dir="ltr"><select id="dialcode" data-dialcodes data-top-label="{e(t.get('dial_top','Gulf & India'))}" data-all-label="{e(t.get('dial_all','All countries'))}" data-search="{e(t.get('dial_search','Search country or code'))}" data-none="{e(t.get('dial_none','No match'))}" aria-label="{e(t.get('dial_aria','Country calling code'))}" class="w-[7.5rem] shrink-0 px-2 py-3 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:border-brand-warmGold text-sm [&>optgroup]:text-slate-900 [&_option]:text-slate-900"></select><input type="tel" id="phone" name="phone" autocomplete="tel-national" inputmode="tel" placeholder="50 123 4567" class="min-w-0 flex-1 {inp}" dir="ltr" /></div></div>
-          </div>
-          <div><label for="rfqNotes" class="{lab}">{e(t['f_notes'])}</label><textarea id="rfqNotes" name="notes" rows="3" placeholder="{e(t['ph_notes'])}" class="{inp}"></textarea></div>
+          {rfqfields.render(code, groups, t['groups'], lab)}
           <button type="submit" id="rfqSubmit" class="w-full disabled:opacity-60 py-4 bg-brand-warmGold hover:bg-yellow-500 text-slate-950 font-bold rounded-xl text-base shadow-lg">{e(t['submit'])}</button>
           <div id="formMsg" role="status" aria-live="polite" class="hidden"></div>
         </form>

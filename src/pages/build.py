@@ -21,3 +21,11 @@ sm='<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.o
 open(ROOT+'/sitemap.xml','w').write(sm)
 import lang
 print(len(urls),'pages')
+
+# English RFQ form fields on the homepage (shared with the AR / FR pages)
+import re as _re, rfqfields as _rf
+_ip=f'{ROOT}/index.html'; _h=open(_ip).read()
+_lab='block text-xs font-bold uppercase tracking-wider text-emerald-200 mb-2'
+_gen=_rf.render('en', [('rice',BASMATI),('rice',AROMATIC),('rice',NONBAS),('spices',SPICES)], ['Basmati rice','Aromatic rice','Non-basmati rice','Spices'], _lab)
+_h=_re.sub(r'(<!-- rfq-fields:start[^>]*-->\n).*?(\s*<!-- rfq-fields:end -->)', lambda m: m.group(1)+'        '+_gen+m.group(2), _h, flags=_re.S)
+open(_ip,'w').write(_h); print('homepage RFQ fields ok')
