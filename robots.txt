@@ -5,3 +5,4 @@ Disallow: /brand/
 Disallow: /integrations/
 
 Sitemap: https://www.bhumivarahiimpex.com/sitemap.xml
+Disallow: /src/

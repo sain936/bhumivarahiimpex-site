@@ -522,7 +522,7 @@
             <div class="p-6 space-y-3">
               <h3 class="font-bold text-lg text-slate-900 font-cinzel">Rice &amp; Grains</h3>
               <p class="text-xs text-slate-600 leading-relaxed">
-                Premium 1010 White Rice, Parboiled Rice, Broken Rice, and 1121 Basmati Rice sourced directly from verified East Godavari mills.
+                Basmati (1121, 1509, 1718, Pusa, Traditional), aromatic Sugandha and Sharbati, and non-basmati 1010, IR 64, Sona Masoori, Swarna, Ponni and broken rice.
               </p>
               <div class="pt-2">
                 <span class="inline-block text-xs font-bold text-brand-agriGreen bg-emerald-100/70 px-3 py-1 rounded">Bulk Container &amp; Breakbulk</span>
@@ -533,7 +533,7 @@
             <button onclick="preselectCommodity('1010 Non-Basmati Rice')" class="w-full py-2.5 rounded-lg border border-brand-agriGreen text-brand-agriGreen font-bold text-xs hover:bg-brand-agriGreen hover:text-white transition">
               Request Rice Quote
             </button>
-            <a href="/rice/" class="block mt-3 text-center text-sm font-semibold text-brand-agriGreen underline underline-offset-4 hover:text-brand-darkGreen">View rice specifications &rarr;</a>
+            <a href="/rice/" class="block mt-3 text-center text-sm font-semibold text-brand-agriGreen underline underline-offset-4 hover:text-brand-darkGreen">View all rice varieties &rarr;</a>
           </div>
         </div>
 
@@ -547,7 +547,7 @@
             <div class="p-6 space-y-3">
               <h3 class="font-bold text-lg text-slate-900 font-cinzel">Spices &amp; Seasonings</h3>
               <p class="text-xs text-slate-600 leading-relaxed">
-                High-curcumin Nizamabad Turmeric fingers/powder, Guntur Teja Red Chili, Cumin, and Coriander seeds with laboratory certificate.
+                Turmeric, Guntur red chilli, cumin, coriander, Malabar black pepper and green cardamom, with lab analysis on every lot.
               </p>
               <div class="pt-2">
                 <span class="inline-block text-xs font-bold text-brand-agriGreen bg-emerald-100/70 px-3 py-1 rounded">Food-Grade Packaging</span>
@@ -555,9 +555,10 @@
             </div>
           </div>
           <div class="p-6 pt-0">
-            <button onclick="preselectCommodity('Indian Spices (Turmeric / Chili)')" class="w-full py-2.5 rounded-lg border border-brand-agriGreen text-brand-agriGreen font-bold text-xs hover:bg-brand-agriGreen hover:text-white transition">
-              Request Spice Specs
+            <button onclick="preselectCommodity('Turmeric')" class="w-full py-2.5 rounded-lg border border-brand-agriGreen text-brand-agriGreen font-bold text-xs hover:bg-brand-agriGreen hover:text-white transition">
+              Request Spice Quote
             </button>
+            <a href="/spices/" class="block mt-3 text-center text-sm font-semibold text-brand-agriGreen underline underline-offset-4 hover:text-brand-darkGreen">View all spices &rarr;</a>
           </div>
         </div>
 
@@ -724,11 +725,38 @@
           <div>
             <label for="commoditySelect" class="block text-xs font-bold uppercase tracking-wider text-emerald-200 mb-2">Commodity / Product Desk</label>
             <select id="commoditySelect" name="commodity" class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-white/20 text-white text-sm focus:outline-none focus:border-brand-warmGold">
-              <option value="1010 Non-Basmati Rice">1010 Non-Basmati Rice (Parboiled / Raw)</option>
-              <option value="1121 Basmati Rice">1121 Basmati Rice (Steam / Sella)</option>
-              <option value="Indian Spices (Turmeric / Chili)">Indian Spices (Nizamabad Turmeric / Guntur Teja)</option>
-              <option value="Pulses & Grains">Pulses, Millets &amp; Coarse Grains</option>
-              <option value="Industrial / Custom Goods">Industrial &amp; Engineering Spares</option>
+              <optgroup label="Basmati rice">
+                <option value="1121 Basmati Rice">1121 Basmati Rice</option>
+                <option value="1509 Basmati Rice">1509 Basmati Rice</option>
+                <option value="1718 Basmati Rice">1718 Basmati Rice</option>
+                <option value="Pusa Basmati Rice">Pusa Basmati Rice</option>
+                <option value="Traditional Basmati Rice">Traditional Basmati Rice</option>
+              </optgroup>
+              <optgroup label="Aromatic rice">
+                <option value="Sugandha Rice">Sugandha Rice</option>
+                <option value="Sharbati Rice">Sharbati Rice</option>
+              </optgroup>
+              <optgroup label="Non-basmati rice">
+                <option value="1010 Non-Basmati Rice">1010 Non-Basmati Rice</option>
+                <option value="IR 64 Rice">IR 64 Rice</option>
+                <option value="Sona Masoori Rice">Sona Masoori Rice</option>
+                <option value="Swarna Rice">Swarna Rice</option>
+                <option value="Ponni Rice">Ponni Rice</option>
+                <option value="100% Broken Rice">100% Broken Rice</option>
+              </optgroup>
+              <optgroup label="Spices">
+                <option value="Turmeric">Turmeric</option>
+                <option value="Dried Red Chilli">Dried Red Chilli</option>
+                <option value="Cumin Seeds">Cumin Seeds</option>
+                <option value="Coriander Seeds">Coriander Seeds</option>
+                <option value="Black Pepper">Black Pepper</option>
+                <option value="Green Cardamom">Green Cardamom</option>
+              </optgroup>
+              <optgroup label="Other">
+                <option value="Pulses & Grains">Pulses, Millets &amp; Coarse Grains</option>
+                <option value="Industrial / Custom Goods">Industrial &amp; Engineering Spares</option>
+                <option value="Other / Custom request">Other / custom request</option>
+              </optgroup>
             </select>
           </div>
           <div>
