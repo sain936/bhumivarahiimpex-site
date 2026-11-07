@@ -3,6 +3,6 @@ Allow: /
 Disallow: /letterhead/
 Disallow: /brand/
 Disallow: /integrations/
+Disallow: /src/
 
 Sitemap: https://www.bhumivarahiimpex.com/sitemap.xml
-Disallow: /src/
