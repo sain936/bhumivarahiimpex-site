@@ -9,7 +9,7 @@
 
 const SHEET_NAME = 'RFQs';
 const NOTIFY_EMAIL = 'info@bhumivarahiimpex.com';
-const HEADERS = ['Received', 'Company / Buyer', 'Email', 'Phone / WhatsApp', 'Country',
+const HEADERS = ['Received', 'RFQ No.', 'Company / Buyer', 'Email', 'Phone / WhatsApp', 'Country',
                  'Commodity', 'Quantity', 'Port & Packaging', 'Status', 'Notes (internal)'];
 
 function doPost(e) {
@@ -37,15 +37,15 @@ function doPost(e) {
     // Same buyer, same product within an hour: note it on the first request instead of a new row.
     const dup = findRecentDuplicate_(sheet, p);
     if (dup) {
-      const cell = sheet.getRange(dup.row, 10);
+      const cell = sheet.getRange(dup.row, 11);
       const extra = String(p.notes || '').trim() && String(p.notes).trim() !== String(dup.notes).trim()
         ? ' (new details: ' + clean(p.notes).slice(0, 300) + ')' : '';
       cell.setValue(cell.getValue() + ' · Resubmitted ' + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd MMM HH:mm') + extra);
       return json_({ success: true });
     }
 
-    sheet.appendRow([new Date(), clean(p.name), clean(p.email), clean(p.phone), clean(p.country),
-                     clean(p.commodity), clean(p.quantity), clean(p.notes), 'New', 'Ref: ' + p.ref]);
+    sheet.appendRow([new Date(), p.ref, clean(p.name), clean(p.email), clean(p.phone), clean(p.country),
+                     clean(p.commodity), clean(p.quantity), clean(p.notes), 'New', '']);
 
     notify_(p);
     try { acknowledge_(p); } catch (ackErr) { console.warn('Buyer acknowledgement failed: ' + ackErr); }
@@ -66,6 +66,7 @@ function getSheet_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) sheet = ss.insertSheet(SHEET_NAME);
+  if (sheet.getLastRow() > 0) migrateRfqNo_(sheet);
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(HEADERS);
     sheet.getRange(1, 1, 1, HEADERS.length)
@@ -75,9 +76,25 @@ function getSheet_() {
     sheet.getRange('A:A').setNumberFormat('dd-mmm-yyyy hh:mm');
     const rule = SpreadsheetApp.newDataValidation()
       .requireValueInList(['New', 'Contacted', 'Quoted', 'Won', 'Lost'], true).build();
-    sheet.getRange(2, 9, 1000, 1).setDataValidation(rule);
+    sheet.getRange(2, 10, 1000, 1).setDataValidation(rule);
   }
   return sheet;
+}
+
+// Older sheets had no RFQ No. column (the reference sat in Notes as "Ref: BV-...").
+// This inserts the column as B once, and moves each existing reference into it.
+function migrateRfqNo_(sheet) {
+  if (String(sheet.getRange(1, 2).getValue()) === 'RFQ No.') return;
+  sheet.insertColumnBefore(2);
+  sheet.getRange(1, 2).setValue('RFQ No.').setFontWeight('bold').setBackground('#1B4D3E').setFontColor('#FFFFFF');
+  sheet.setColumnWidth(2, 150);
+  const n = sheet.getLastRow() - 1;
+  if (n < 1) return;
+  const notes = sheet.getRange(2, 11, n, 1).getValues();
+  const refs = notes.map(r => [(String(r[0]).match(/BV-\d{6}-\d{6}/) || [''])[0]]);
+  const rest = notes.map(r => [String(r[0]).replace(/^Ref: BV-\d{6}-\d{6}\s*(·\s*)?/, '')]);
+  sheet.getRange(2, 2, n, 1).setValues(refs);
+  sheet.getRange(2, 11, n, 1).setValues(rest);
 }
 
 function notify_(p) {
@@ -162,19 +179,19 @@ function sendWeeklySummary() {
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 864e5);
   const isDate = v => Object.prototype.toString.call(v) === '[object Date]';
-  const rows = data.filter(r => isDate(r[0]) && (r[1] || r[2]));
+  const rows = data.filter(r => isDate(r[0]) && (r[2] || r[3]));
   const newThisWeek = rows.filter(r => r[0] >= weekAgo);
-  const count = s => rows.filter(r => String(r[8] || 'New') === s).length;
-  const open = rows.filter(r => ['New', 'Contacted', 'Quoted'].includes(String(r[8] || 'New')))
+  const count = s => rows.filter(r => String(r[9] || 'New') === s).length;
+  const open = rows.filter(r => ['New', 'Contacted', 'Quoted'].includes(String(r[9] || 'New')))
                    .sort((a, b) => a[0] - b[0]);
   const esc = s => String(s == null || s === '' ? '-' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const fmt = d => Utilities.formatDate(d, 'Asia/Kolkata', 'dd MMM');
   const days = d => Math.floor((now - d) / 864e5);
-  const ref = r => (String(r[9]).match(/BV-\d{6}-\d{6}/) || [''])[0];
+  const ref = r => String(r[1] || '') || (String(r[10]).match(/BV-\d{6}-\d{6}/) || [''])[0];
   const stat = (label, n, bg) => `<td style="padding:10px;text-align:center;background:${bg};border-radius:6px;"><div style="font-size:22px;font-weight:bold;color:#1B4D3E;">${n}</div><div style="font-size:11px;color:#5A6A72;text-transform:uppercase;letter-spacing:1px;">${label}</div></td>`;
   const th = t => `<th style="text-align:left;padding:6px 8px;background:#1B4D3E;color:#fff;font-size:12px;">${t}</th>`;
   const td = (t, extra) => `<td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:12px;${extra || ''}">${t}</td>`;
-  const openRows = open.slice(0, 30).map(r => `<tr>${td(fmt(r[0]))}${td(esc(ref(r)))}${td(esc(r[1]))}${td(esc(r[5]))}${td(esc(r[6]))}${td(esc(r[4]))}${td(esc(r[8] || 'New'))}${td(days(r[0]) + ' d', days(r[0]) > 3 && String(r[8] || 'New') === 'New' ? 'color:#b91c1c;font-weight:bold;' : '')}</tr>`).join('');
+  const openRows = open.slice(0, 30).map(r => `<tr>${td(fmt(r[0]))}${td(esc(ref(r)))}${td(esc(r[2]))}${td(esc(r[6]))}${td(esc(r[7]))}${td(esc(r[5]))}${td(esc(r[9] || 'New'))}${td(days(r[0]) + ' d', days(r[0]) > 3 && String(r[9] || 'New') === 'New' ? 'color:#b91c1c;font-weight:bold;' : '')}</tr>`).join('');
   const html = `<div style="font-family:Arial,sans-serif;max-width:720px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
     <div style="background:#1B4D3E;color:#E5C158;padding:14px 18px;font-weight:bold;letter-spacing:1px;">WEEKLY RFQ SUMMARY · ${fmt(weekAgo)} – ${fmt(now)}</div>
     <div style="padding:16px 18px;">
@@ -240,9 +257,9 @@ function findRecentDuplicate_(sheet, p) {
   for (let i = rows.length - 1; i >= 0; i--) {
     const r = rows[i];
     if (!isDate_(r[0]) || r[0].getTime() < cutoff) continue;
-    const sameBuyer = (email && String(r[2]).trim().toLowerCase() === email) ||
-                      (phone.length >= 6 && String(r[3]).replace(/\D/g, '') === phone);
-    if (sameBuyer && String(r[5]).trim().toLowerCase() === commodity) return { row: start + i, notes: r[7] };
+    const sameBuyer = (email && String(r[3]).trim().toLowerCase() === email) ||
+                      (phone.length >= 6 && String(r[4]).replace(/\D/g, '') === phone);
+    if (sameBuyer && String(r[6]).trim().toLowerCase() === commodity) return { row: start + i, notes: r[8] };
   }
   return null;
 }
@@ -302,14 +319,14 @@ function dailyDigest() {
   const esc = s => String(s == null || s === '' ? '-' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const th = t => `<th style="text-align:left;padding:6px 8px;background:#1B4D3E;color:#fff;font-size:12px;">${t}</th>`;
   const td = t => `<td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:12px;">${t}</td>`;
-  const ref = r => (String(r[9]).match(/BV-\d{6}-\d{6}/) || [''])[0];
+  const ref = r => String(r[1] || '') || (String(r[10]).match(/BV-\d{6}-\d{6}/) || [''])[0];
   const hours = d => (now - d) / 36e5;
 
   const sheet = getSheet_();
   const data = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, HEADERS.length).getValues() : [];
-  const rfqs = data.filter(r => isDate_(r[0]) && (r[1] || r[2]));
-  const needReply = rfqs.filter(r => String(r[8] || 'New') === 'New' && hours(r[0]) >= REPLY_AFTER_HOURS);
-  const needQuote = rfqs.filter(r => String(r[8] || 'New') === 'Contacted' && hours(r[0]) >= QUOTE_AFTER_DAYS * 24);
+  const rfqs = data.filter(r => isDate_(r[0]) && (r[2] || r[3]));
+  const needReply = rfqs.filter(r => String(r[9] || 'New') === 'New' && hours(r[0]) >= REPLY_AFTER_HOURS);
+  const needQuote = rfqs.filter(r => String(r[9] || 'New') === 'Contacted' && hours(r[0]) >= QUOTE_AFTER_DAYS * 24);
 
   const out = getOutreachSheet_();
   const odata = out.getLastRow() > 1 ? out.getRange(2, 1, out.getLastRow() - 1, OUTREACH_HEADERS.length).getValues() : [];
@@ -322,7 +339,7 @@ function dailyDigest() {
 
   const rfqTable = (rows, label, colour) => rows.length ? `<h3 style="color:${colour};font-size:15px;margin:18px 0 8px;">${label} (${rows.length})</h3>
     <table style="width:100%;border-collapse:collapse;"><tr>${th('Received')}${th('Ref')}${th('Buyer')}${th('Commodity')}${th('Qty')}${th('Country')}${th('Email')}</tr>
-    ${rows.sort((a, b) => a[0] - b[0]).slice(0, 30).map(r => `<tr>${td(fmt(r[0]))}${td(esc(ref(r)))}${td(esc(r[1]))}${td(esc(r[5]))}${td(esc(r[6]))}${td(esc(r[4]))}${td(esc(r[2]))}</tr>`).join('')}</table>` : '';
+    ${rows.sort((a, b) => a[0] - b[0]).slice(0, 30).map(r => `<tr>${td(fmt(r[0]))}${td(esc(ref(r)))}${td(esc(r[2]))}${td(esc(r[6]))}${td(esc(r[7]))}${td(esc(r[5]))}${td(esc(r[3]))}</tr>`).join('')}</table>` : '';
   const outTable = due.length ? `<h3 style="color:#1B4D3E;font-size:15px;margin:18px 0 8px;">Outreach follow-ups due (${due.length})</h3>
     <table style="width:100%;border-collapse:collapse;"><tr>${th('Due')}${th('Company')}${th('Country')}${th('Contact')}${th('Email / WhatsApp')}${th('Language')}${th('Next step')}</tr>
     ${due.sort((a, b) => a[8] - b[8]).slice(0, 40).map(r => `<tr>${td(fmt(r[8]))}${td(esc(r[1]))}${td(esc(r[2]))}${td(esc(r[3]))}${td(esc(r[4]))}${td(esc(r[6]))}${td(esc(nextStep(String(r[7]))))}</tr>`).join('')}</table>` : '';
@@ -389,13 +406,13 @@ function sendMonthlyReport() {
 
   const sheet = getSheet_();
   const data = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, HEADERS.length).getValues() : [];
-  const rows = data.filter(r => isDate_(r[0]) && (r[1] || r[2]) && key(r[0]) === target);
+  const rows = data.filter(r => isDate_(r[0]) && (r[2] || r[3]) && key(r[0]) === target);
   const tally = idx => {
     const t = {};
     rows.forEach(r => { const k = String(r[idx] || '').trim() || 'Not given'; t[k] = (t[k] || 0) + 1; });
     return Object.keys(t).map(k => [k, t[k]]).sort((a, b) => b[1] - a[1]);
   };
-  const status = s => rows.filter(r => String(r[8] || 'New') === s).length;
+  const status = s => rows.filter(r => String(r[9] || 'New') === s).length;
   const quotedOrLater = status('Quoted') + status('Won') + status('Lost');
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const list = (title, pairs) => `<h3 style="color:#1B4D3E;font-size:15px;margin:18px 0 8px;">${title}</h3>
@@ -414,8 +431,8 @@ function sendMonthlyReport() {
         ${stat('RFQs', rows.length, '#F8F5EC')}${stat('Quoted', quotedOrLater, '#F1F5F9')}${stat('Won', status('Won'), '#DCFCE7')}${stat('Lost', status('Lost'), '#FEE2E2')}${stat('Still open', status('New') + status('Contacted') + status('Quoted'), '#FEF3C7')}
       </tr></table>
       <p style="font-size:13px;color:#334155;">Quote rate: <b>${rows.length ? Math.round(100 * quotedOrLater / rows.length) : 0}%</b> · Win rate on quotes: <b>${quotedOrLater ? Math.round(100 * status('Won') / quotedOrLater) : 0}%</b> · Spam blocked: <b>${spam}</b></p>
-      ${list('By product', tally(5))}
-      ${list('By country', tally(4))}
+      ${list('By product', tally(6))}
+      ${list('By country', tally(5))}
       <p style="color:#5A6A72;font-size:12px;margin-top:14px;"><a href="${SpreadsheetApp.getActiveSpreadsheet().getUrl()}" style="color:#1B4D3E;">Open the RFQ sheet</a></p>
     </div></div>`;
   MailApp.sendEmail({ to: NOTIFY_EMAIL, subject: `Monthly RFQ report, ${label}: ${rows.length} RFQs, ${status('Won')} won`, htmlBody: html, name: 'Bhumi Varahi Website' });
