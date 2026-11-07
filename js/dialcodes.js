@@ -32,11 +32,31 @@
     'تونس': 'TN', 'ليبيا': 'LY', 'السودان': 'SD', 'لبنان': 'LB', 'سوريا': 'SY', 'الهند': 'IN' };
   var byIso = {}; C.forEach(function (c) { byIso[c[0]] = c; });
 
+  // Best guess at the visitor's country: time zone first (reliable), then browser language region.
+  var TZ = { 'Asia/Dubai': 'AE', 'Asia/Riyadh': 'SA', 'Asia/Muscat': 'OM', 'Asia/Qatar': 'QA', 'Asia/Kuwait': 'KW',
+    'Asia/Bahrain': 'BH', 'Asia/Kolkata': 'IN', 'Asia/Calcutta': 'IN', 'Asia/Karachi': 'PK', 'Asia/Dhaka': 'BD',
+    'Asia/Colombo': 'LK', 'Asia/Kathmandu': 'NP', 'Asia/Singapore': 'SG', 'Asia/Kuala_Lumpur': 'MY', 'Asia/Jakarta': 'ID',
+    'Asia/Bangkok': 'TH', 'Asia/Manila': 'PH', 'Asia/Ho_Chi_Minh': 'VN', 'Asia/Hong_Kong': 'HK', 'Asia/Shanghai': 'CN',
+    'Asia/Tokyo': 'JP', 'Asia/Seoul': 'KR', 'Asia/Baghdad': 'IQ', 'Asia/Amman': 'JO', 'Asia/Beirut': 'LB', 'Asia/Aden': 'YE',
+    'Asia/Tehran': 'IR', 'Africa/Cairo': 'EG', 'Africa/Lagos': 'NG', 'Africa/Accra': 'GH', 'Africa/Nairobi': 'KE',
+    'Africa/Dar_es_Salaam': 'TZ', 'Africa/Kampala': 'UG', 'Africa/Addis_Ababa': 'ET', 'Africa/Johannesburg': 'ZA',
+    'Africa/Dakar': 'SN', 'Africa/Abidjan': 'CI', 'Africa/Casablanca': 'MA', 'Africa/Algiers': 'DZ', 'Africa/Tunis': 'TN',
+    'Africa/Djibouti': 'DJ', 'Africa/Mogadishu': 'SO', 'Africa/Khartoum': 'SD', 'Africa/Conakry': 'GN', 'Africa/Bamako': 'ML',
+    'Africa/Douala': 'CM', 'Africa/Maputo': 'MZ', 'Africa/Lusaka': 'ZM', 'Africa/Harare': 'ZW', 'Indian/Mauritius': 'MU',
+    'Europe/London': 'GB', 'Europe/Paris': 'FR', 'Europe/Berlin': 'DE', 'Europe/Amsterdam': 'NL', 'Europe/Brussels': 'BE',
+    'Europe/Madrid': 'ES', 'Europe/Rome': 'IT', 'Europe/Istanbul': 'TR', 'Europe/Moscow': 'RU', 'Australia/Sydney': 'AU',
+    'Australia/Melbourne': 'AU', 'Pacific/Auckland': 'NZ', 'America/Toronto': 'CA', 'America/Sao_Paulo': 'BR' };
   function guess() {
+    try {
+      var tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+      if (TZ[tz]) return TZ[tz];
+      if (/^America\/(New_York|Chicago|Denver|Los_Angeles|Phoenix|Anchorage)$/.test(tz)) return 'US';
+    } catch (e) {}
     var langs = (navigator.languages || [navigator.language || '']);
     for (var i = 0; i < langs.length; i++) {
       var m = /-([A-Z]{2})$/i.exec(langs[i] || '');
-      if (m && byIso[m[1].toUpperCase()]) return m[1].toUpperCase();
+      // "en-US" is just the default browser language for many people, so it is not used as a hint.
+      if (m && byIso[m[1].toUpperCase()] && langs[i].toLowerCase() !== 'en-us') return m[1].toUpperCase();
     }
     return 'AE';
   }
