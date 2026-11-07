@@ -94,7 +94,7 @@ function acknowledge_(p) {
     <div style="padding:24px;color:#334155;font-size:15px;line-height:1.6;">
       <p style="margin:0 0 14px;">Dear ${name},</p>
       <p style="margin:0 0 14px;">Thank you for your request for quotation. We have received it, and our export desk is now working on your quotation.</p>
-      <p style="margin:0 0 18px;">We will be in touch with you as soon as the quotation is ready. If you have anything to add, such as specifications, packaging or delivery timelines, simply reply to this email.</p>
+      <p style="margin:0 0 18px;">We will be in touch with you as soon as the quotation is ready. If you have anything to add, such as specifications, packaging or delivery timelines, simply reply to this email or message us on <a href="https://wa.me/919492992666" style="color:#1B4D3E;font-weight:bold;">WhatsApp</a>.</p>
       <div style="background:#F8F5EC;border-left:3px solid #C9A227;border-radius:4px;padding:8px 4px;margin:0 0 18px;">
         <div style="padding:4px 12px;font-size:12px;letter-spacing:1px;color:#8A6508;font-weight:bold;">YOUR REQUEST</div>
         <table style="border-collapse:collapse;font-size:14px;">
@@ -105,10 +105,11 @@ function acknowledge_(p) {
     </div>
     <div style="background:#0E2820;color:#cbd5e1;padding:12px 24px;font-size:12px;">
       <a href="mailto:${NOTIFY_EMAIL}" style="color:#E5C158;text-decoration:none;">${NOTIFY_EMAIL}</a> &nbsp;|&nbsp;
+      <a href="https://wa.me/919492992666" style="color:#E5C158;text-decoration:none;">WhatsApp +91 94929 92666</a> &nbsp;|&nbsp;
       <a href="https://www.bhumivarahiimpex.com" style="color:#E5C158;text-decoration:none;">www.bhumivarahiimpex.com</a>
     </div>
   </div>`;
-  const text = `Dear ${p.name || 'Sir / Madam'},\n\nThank you for your request for quotation. We have received it, and our export desk is now working on your quotation. We will be in touch as soon as the quotation is ready.\n\nCommodity: ${p.commodity || '-'}\nQuantity: ${p.quantity || '-'}\n\nWarm regards,\nExport Desk, Bhumi Varahi Impex Pvt Ltd\n${NOTIFY_EMAIL} | www.bhumivarahiimpex.com`;
+  const text = `Dear ${p.name || 'Sir / Madam'},\n\nThank you for your request for quotation. We have received it, and our export desk is now working on your quotation. We will be in touch as soon as the quotation is ready.\n\nCommodity: ${p.commodity || '-'}\nQuantity: ${p.quantity || '-'}\n\nWarm regards,\nExport Desk, Bhumi Varahi Impex Pvt Ltd\n${NOTIFY_EMAIL} | WhatsApp +91 94929 92666 | www.bhumivarahiimpex.com`;
   MailApp.sendEmail({
     to: email,
     replyTo: NOTIFY_EMAIL,
