@@ -492,6 +492,7 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('Bhumi Varahi')
     .addItem('Resend buyer email (selected row)', 'resendAcknowledgement')
     .addItem('Create internal costing (selected row)', 'createInternalCosting')
+    .addItem('Set Gemini API key (for costing research)', 'setGeminiKey')
     .addItem('Create quotation PDF (selected row)', 'createQuotation')
     .addItem('Send today\'s follow-ups now', 'dailyDigest')
     .addToUi();
@@ -715,6 +716,8 @@ const COST_SETTINGS_DEFAULT = [
   ['Mill / origin', 'Jaggampeta, East Godavari, A.P.'],
   ['Inland distance (km)', 170],
   ['Quotation validity (days)', 7],
+  ['Gemini research (Y/N)', 'Y'],
+  ['Gemini model', 'gemini-3.8-flash'],
 ];
 // Item | Basis shown on the sheet | Rate (INR) | Per (MT / bag / container / shipment) | GST 18% (Y/N) | Include (Y/N)
 const COST_RATES_DEFAULT = [
@@ -972,7 +975,30 @@ function costingRow_(sheet, row, millPer100kg, mt, cfg) {
     ['Fumigation booked', 'CHA desk'], ['Weight / moisture tolerance clause in the contract', 'Commercial'], ['Payment terms accepted by the buyer', 'Finance'],
   ].map(x => ['[  ]'].concat(x))), { widths: [40, 350, 120] });
 
-  heading('10. Approvals');
+  // Destination research by Gemini with Google Search (only when a key is set and research is on).
+  let research = null;
+  if (!/^n/i.test(String(setting_(S, 'Gemini research (Y/N)', 'Y')))) {
+    research = researchDestination_(p, c, { mt: mt, pol: pol, fx: fx, model: String(setting_(S, 'Gemini model', 'gemini-3.8-flash')) });
+  }
+  if (research) {
+    heading('10. Destination research (AI draft: verify before use)');
+    if (research.error) {
+      para('Research could not be completed: ' + research.error, { size: 9, color: '#9B1C1C' });
+    } else {
+      para('Prepared by Gemini with Google Search on ' + fmt(new Date()) + '. Figures change often; check duties, rules and prices with the official source or your CHA before quoting.', { size: 8.5, color: GOLD, bold: true });
+      researchToDoc_(body, research.text, GREEN);
+      if (research.sources.length) {
+        para('Sources', { size: 9, bold: true, color: GREY });
+        research.sources.forEach((src, i) => {
+          const x = para((i + 1) + '. ' + src.title, { size: 8, color: '#1d4ed8' });
+          try { x.editAsText().setLinkUrl(src.uri); } catch (e) {}
+        });
+      }
+      if (research.queries.length) para('Searches run: ' + research.queries.join(' | '), { size: 7.5, color: GREY });
+    }
+  }
+
+  heading((research ? '11' : '10') + '. Approvals');
   table([
     ['Costing verified', 'Logistics & CHA cleared', 'Final commercial sign-off'],
     ['\n\nSignature: ____________\nDate: ____ / ____ / ' + year, '\n\nSignature: ____________\nDate: ____ / ____ / ' + year, '\n\nSignature: ____________\nDate: ____ / ____ / ' + year],
@@ -992,6 +1018,92 @@ function costingRow_(sheet, row, millPer100kg, mt, cfg) {
     costNo: costNo, pdfUrl: pdf.getUrl(), calc: c,
     message: costNo + ' created (internal, not sent to anyone).\n\nNet cost: ' + usd(c.costUsd) + ' (' + usd(c.costUsd / mt) + ' / MT)\nFOB price to quote: ' + usd(c.fobUsdPerMt) + ' / MT  (' + usd(c.fobUsd) + ' total)' +
       (p.price ? '\nBuyer target: USD ' + p.price + ' / MT' : '') +
+      (research ? (research.error ? '\n\nGemini research failed: ' + research.error : '\n\nGemini destination research added (' + research.sources.length + ' sources).') : '') +
       '\n\nPDF: ' + pdf.getUrl() + '\nEditable copy: ' + docFile.getUrl() + '\n\nNext: Create quotation PDF will suggest this FOB price.'
   };
+}
+
+// ===== GEMINI RESEARCH (for the internal costing) =====
+// One-time: Bhumi Varahi -> Set Gemini API key. Get a key at https://aistudio.google.com/apikey
+// (Search grounding needs billing turned on for that Google Cloud project; the first
+// 5,000 grounded prompts a month are free, then about USD 14 per 1,000 searches.)
+// The key is kept in Script Properties, never in the sheet.
+function setGeminiKey() {
+  const ui = SpreadsheetApp.getUi();
+  const props = PropertiesService.getScriptProperties();
+  const has = !!props.getProperty('GEMINI_API_KEY');
+  const ans = ui.prompt('Gemini API key', (has ? 'A key is already saved. Paste a new one to replace it, or type DELETE to remove it.' : 'Paste your Gemini API key from aistudio.google.com/apikey.') +
+    '\n\nIt is stored in this script\'s private properties, not in the sheet.', ui.ButtonSet.OK_CANCEL);
+  if (ans.getSelectedButton() !== ui.Button.OK) return;
+  const v = String(ans.getResponseText()).trim();
+  if (v === 'DELETE') { props.deleteProperty('GEMINI_API_KEY'); ui.alert('Gemini key removed. Costings will skip the research section.'); return; }
+  if (v.length < 20) { ui.alert('That does not look like an API key. Nothing was saved.'); return; }
+  props.setProperty('GEMINI_API_KEY', v);
+  ui.alert('Saved. The next internal costing will include destination research.');
+}
+
+function researchPrompt_(p, c, o) {
+  const dest = [p.port, p.country].filter(Boolean).join(', ') || 'the buyer\'s country';
+  return [
+    'You are an export analyst for Bhumi Varahi Impex Pvt Ltd, an Indian agri-commodity exporter. Research this consignment using Google Search and current, official sources where possible.',
+    '',
+    'Consignment: ' + [p.commodity, p.grade].filter(Boolean).join(', ') + ', ' + o.mt + ' MT in ' + c.containers + ' x 20 ft container(s), packed ' + (p.packing || '50 kg bags') + '.',
+    'Our price: FOB ' + o.pol + ', India at USD ' + c.fobUsdPerMt.toFixed(2) + ' per MT. Buyer destination: ' + dest + '. Buyer asked for: ' + (p.incoterm || 'not stated') + ', payment ' + (p.payment || 'not stated') + '.',
+    '',
+    'Write these sections, each starting with a line "### <title>". Use short bullet lines starting with "- ". Give numbers with currency, units and the date or year of the figure.',
+    '### India export rules',
+    '- HS code for this product, and any current Indian export restrictions, duty, minimum export price, APEDA or other registration, and quality checks that apply now.',
+    '### Destination import compliance',
+    '- Import permit or registration, standards, pre-shipment inspection (e.g. PVoC/CoC), phytosanitary and fumigation rules, labelling and any transit country rules.',
+    '### Duties and taxes at destination',
+    '- Import duty rate on this HS code (and any regional bloc tariff), VAT and levies, with the basis (CIF or other).',
+    '### Destination market prices',
+    '- Current wholesale and retail price ranges in local currency and converted to USD per MT, with the exchange rate used.',
+    '### Buyer landed cost and margin',
+    '- Starting from our FOB price, estimate ocean freight per 20 ft container from ' + o.pol + ' to ' + (p.port || 'the nearest main port') + ', insurance, destination port and inland charges, and duty, giving a landed cost per MT. Compare it with the wholesale price and give the buyer\'s estimated margin per MT and per container. Show the calculation.',
+    '### Risks and notes',
+    '- Anything that could stop or delay the shipment, or change the price (for example policy changes, seasonality, currency).',
+    '',
+    'If you cannot find a reliable figure, write "Not found, check with CHA / buyer" instead of guessing. Do not invent licences or certifications for Bhumi Varahi Impex. Keep the whole answer under 700 words.'
+  ].join('\n');
+}
+
+// Returns null (no key), { error } or { text, sources: [{title, uri}], queries }.
+function researchDestination_(p, c, o) {
+  const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!key) return null;
+  try {
+    const res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(o.model) + ':generateContent', {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { 'x-goog-api-key': key },
+      payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: researchPrompt_(p, c, o) }] }], tools: [{ google_search: {} }] })
+    });
+    const code = res.getResponseCode();
+    let j = {};
+    try { j = JSON.parse(res.getContentText()); } catch (e) {}
+    if (code !== 200) return { error: 'Gemini returned ' + code + (j.error && j.error.message ? ': ' + String(j.error.message).slice(0, 300) : '') };
+    const cand = (j.candidates || [])[0] || {};
+    const text = ((cand.content || {}).parts || []).map(x => x.text || '').join('').trim();
+    if (!text) return { error: 'Gemini returned no text' + (cand.finishReason ? ' (' + cand.finishReason + ')' : '') };
+    const gm = cand.groundingMetadata || {};
+    const seen = {};
+    const sources = (gm.groundingChunks || []).map(g => g.web || {}).filter(w => w.uri && !seen[w.uri] && (seen[w.uri] = 1))
+      .map(w => ({ title: String(w.title || w.uri), uri: String(w.uri) })).slice(0, 15);
+    return { text: text, sources: sources, queries: (gm.webSearchQueries || []).slice(0, 10) };
+  } catch (err) {
+    return { error: String(err).slice(0, 300) };
+  }
+}
+
+// Light Markdown to Doc: "### " headings, "- " bullets, **bold** markers removed.
+function researchToDoc_(body, text, color) {
+  String(text).split(/\r?\n/).forEach(line => {
+    const t = line.replace(/\*\*/g, '').replace(/\s+$/, '');
+    if (!t.trim()) return;
+    const h = t.match(/^#{1,4}\s*(.+)/);
+    if (h) { const x = body.appendParagraph(h[1]); x.editAsText().setFontSize(10).setBold(true).setForegroundColor(color); return; }
+    const b = t.match(/^\s*[-*•]\s+(.+)/);
+    if (b) { const li = body.appendListItem(b[1]); li.setGlyphType(DocumentApp.GlyphType.BULLET); li.editAsText().setFontSize(9).setBold(false).setForegroundColor('#1e293b'); return; }
+    const x = body.appendParagraph(t.trim()); x.editAsText().setFontSize(9).setBold(false).setForegroundColor('#1e293b');
+  });
 }
