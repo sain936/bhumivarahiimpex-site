@@ -28,6 +28,7 @@ function doPost(e) {
                      clean(p.commodity), clean(p.quantity), clean(p.notes), 'New', '']);
 
     notify_(p);
+    try { acknowledge_(p); } catch (ackErr) { console.warn('Buyer acknowledgement failed: ' + ackErr); }
     return json_({ success: true });
   } catch (err) {
     return json_({ success: false, message: String(err) });
@@ -76,6 +77,45 @@ function notify_(p) {
     subject: `New RFQ: ${p.commodity || 'Inquiry'} from ${p.name || 'website visitor'}`,
     htmlBody: html,
     name: 'Bhumi Varahi Website'
+  });
+}
+
+// Thank-you email to the buyer, so they know the request reached us.
+function acknowledge_(p) {
+  const email = String(p.email || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+  const esc = s => String(s || '-').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const name = esc(p.name || 'Sir / Madam');
+  const row = (k, v) => `<tr><td style="padding:6px 12px;color:#5A6A72;width:150px;">${k}</td><td style="padding:6px 12px;color:#1e293b;font-weight:bold;">${esc(v)}</td></tr>`;
+  const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+    <div style="background:#1B4D3E;padding:18px 24px;border-bottom:3px solid #C9A227;">
+      <img src="https://raw.githubusercontent.com/sain936/bhumivarahiimpex-site/main/brand/email-logo.png" alt="Bhumi Varahi Impex" height="48" style="display:block;">
+    </div>
+    <div style="padding:24px;color:#334155;font-size:15px;line-height:1.6;">
+      <p style="margin:0 0 14px;">Dear ${name},</p>
+      <p style="margin:0 0 14px;">Thank you for your request for quotation. We have received it, and our export desk is now working on your quotation.</p>
+      <p style="margin:0 0 18px;">We will be in touch with you as soon as the quotation is ready. If you have anything to add, such as specifications, packaging or delivery timelines, simply reply to this email.</p>
+      <div style="background:#F8F5EC;border-left:3px solid #C9A227;border-radius:4px;padding:8px 4px;margin:0 0 18px;">
+        <div style="padding:4px 12px;font-size:12px;letter-spacing:1px;color:#8A6508;font-weight:bold;">YOUR REQUEST</div>
+        <table style="border-collapse:collapse;font-size:14px;">
+          ${row('Commodity', p.commodity)}${row('Quantity', p.quantity)}${row('Destination', p.country)}${row('Port & packaging', p.notes)}
+        </table>
+      </div>
+      <p style="margin:0;">Warm regards,<br><strong style="color:#1B4D3E;">Export Desk</strong><br>Bhumi Varahi Impex Pvt Ltd</p>
+    </div>
+    <div style="background:#0E2820;color:#cbd5e1;padding:12px 24px;font-size:12px;">
+      <a href="mailto:${NOTIFY_EMAIL}" style="color:#E5C158;text-decoration:none;">${NOTIFY_EMAIL}</a> &nbsp;|&nbsp;
+      <a href="https://www.bhumivarahiimpex.com" style="color:#E5C158;text-decoration:none;">www.bhumivarahiimpex.com</a>
+    </div>
+  </div>`;
+  const text = `Dear ${p.name || 'Sir / Madam'},\n\nThank you for your request for quotation. We have received it, and our export desk is now working on your quotation. We will be in touch as soon as the quotation is ready.\n\nCommodity: ${p.commodity || '-'}\nQuantity: ${p.quantity || '-'}\n\nWarm regards,\nExport Desk, Bhumi Varahi Impex Pvt Ltd\n${NOTIFY_EMAIL} | www.bhumivarahiimpex.com`;
+  MailApp.sendEmail({
+    to: email,
+    replyTo: NOTIFY_EMAIL,
+    subject: `We received your RFQ: ${p.commodity || 'Quotation request'} | Bhumi Varahi Impex`,
+    body: text,
+    htmlBody: html,
+    name: 'Bhumi Varahi Impex'
   });
 }
 

@@ -24,6 +24,7 @@ and an email alert goes to info@bhumivarahiimpex.com.
 - Each row has a **Status** dropdown: New, Contacted, Quoted, Won, Lost.
 - Use the **Notes (internal)** column for follow-up notes.
 - Reply to the alert email to answer the buyer directly.
+- The buyer automatically gets a branded "we are working on your quotation" email (replies come back to info@).
 
 ## If you change the script later
 
