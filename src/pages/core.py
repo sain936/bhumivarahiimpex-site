@@ -75,6 +75,7 @@ def shell(path, title, desc, crumbs, body, ld):
           <li><a href="/rice/" class="hover:text-white">Basmati &amp; non-basmati rice</a></li>
           <li><a href="/spices/" class="hover:text-white">Indian spices</a></li>
           <li><a href="/#rfq" class="hover:text-white">Request a quotation</a></li>
+          <li><a href="/catalogue/Bhumi-Varahi-Impex-Catalogue-2026.pdf" download class="hover:text-white">Download catalogue (PDF)</a></li>
         </ul>
       </div>
       <div class="text-xs space-y-1">
@@ -208,7 +209,8 @@ def hub(cat, groups, h1, lead, title, desc, other):
       <div class="bg-white border border-gray-200 rounded-2xl p-8">
         <h2 class="text-2xl font-cinzel font-bold text-slate-900">Looking for something else?</h2>
         <p class="text-slate-600 mt-2">{html.escape(other)}</p>
-        <a href="/#rfq" class="inline-flex mt-5 bg-brand-agriGreen hover:bg-brand-darkGreen text-white font-semibold px-6 py-3 rounded-xl">Send a request</a>
+        <div class="flex flex-wrap gap-3 mt-5"><a href="/#rfq" class="inline-flex bg-brand-agriGreen hover:bg-brand-darkGreen text-white font-semibold px-6 py-3 rounded-xl">Send a request</a>
+        <a href="/catalogue/Bhumi-Varahi-Impex-Catalogue-2026.pdf" download class="inline-flex border border-brand-agriGreen text-brand-agriGreen hover:bg-emerald-50 font-semibold px-6 py-3 rounded-xl">Download catalogue (PDF)</a></div>
       </div>
     </section>'''
     coll={"@context":"https://schema.org","@type":"ItemList","itemListElement":[{"@type":"ListItem","position":i+1,"url":SITE+u,"name":n} for i,(n,u) in enumerate(allitems)]}
