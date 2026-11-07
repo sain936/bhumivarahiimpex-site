@@ -730,6 +730,8 @@ const COST_SETTINGS_DEFAULT = [
   ['Port of loading', 'Visakhapatnam Port (VCTPL)'],
   ['CHA / CFS partner', 'Sree Shipping & Logistics'],
   ['Quotation validity (days)', 7],
+  ['Minimum margin for GO (%)', 8],
+  ['Minimum buyer return for GO (%)', 8],
   ['Gemini research (Y/N)', 'Y'],
   ['Gemini model', 'gemini-3.8-flash'],
   // Bank details: printed on the internal costing only when filled in.
@@ -742,8 +744,11 @@ const COST_SETTINGS_DEFAULT = [
   ['Bank: SWIFT / BIC', ''],
   ['Bank: remittance purpose code', 'P0102 (export of food commodities)'],
   // Registration status: type Active, Pending, Applied or Not needed, plus the number once you have it.
+  ['Licence: PAN (company)', 'In progress'],
+  ['Licence: Directors KYC (Aadhaar / DIN)', 'In progress'],
   ['Licence: IEC (DGFT)', 'In progress'],
   ['Licence: GST registration + LUT', 'In progress'],
+  ['Licence: Bank AD code letter', 'In progress'],
   ['Licence: AD code registered at port', 'In progress'],
   ['Licence: ICEGATE registration', 'In progress'],
   ['Licence: APEDA RCMC', 'In progress'],
@@ -805,6 +810,13 @@ const IC_FIELDS = [
   ['q_heavy', 'Heavy metals (Pb / Cd)', false, ''],
   ['q_other', 'Other quality terms', false, 'Grain length, purity, colour, crop, etc.'],
   ['q_dest_std', 'Destination standard', false, 'e.g. EAS 128:2017 (Rwanda), GSO (Gulf)'],
+  ['dq_moisture', 'Destination limit: moisture', false, 'From the destination standard'],
+  ['dq_broken', 'Destination limit: broken grains', false, ''],
+  ['dq_fm_inorg', 'Destination limit: foreign matter, inorganic', false, ''],
+  ['dq_fm_org', 'Destination limit: foreign matter, organic', false, ''],
+  ['dq_damaged', 'Destination limit: damaged / discoloured', false, ''],
+  ['dq_aflatoxin', 'Destination limit: aflatoxin', false, ''],
+  ['dq_heavy', 'Destination limit: heavy metals', false, ''],
   ['#', '3. Procurement (origin)'],
   ['mill_name', 'Mill / supplier name', false, ''],
   ['mill_location', 'Mill location', true, ''],
@@ -813,6 +825,7 @@ const IC_FIELDS = [
   ['lorry', 'Inland transport', false, ''],
   ['#', '4. Origin shipping'],
   ['cha', 'CHA / CFS partner', true, ''],
+  ['cfs_facility', 'CFS facility', false, 'e.g. Sree Shipping CFS, Visakhapatnam'],
   ['pol', 'Port of loading', true, 'e.g. Visakhapatnam (VCTPL), Gangavaram, Kakinada'],
   ['container_type', 'Container type', false, ''],
   ['mt_per_ctr', 'MT per container', true, 'Number only; containers are worked out from this'],
@@ -832,7 +845,7 @@ const IC_FIELDS = [
   ['fx', 'USD rate (INR per USD)', true, 'Number only'],
   ['margin_pct', 'Margin (% of cargo cost)', true, 'Number only'],
   ['gst_pct', 'GST on logistics services (%)', true, 'Number only'],
-  ['#', '7. Buyer landed cost (USD; leave freight empty to skip this section)'],
+  ['#', '7. Buyer landed cost (USD). Empty cells are filled from Gemini research when available, and marked as AI estimates'],
   ['b_freight', 'Ocean freight per container (USD)', false, 'Shipping line quote'],
   ['b_local', 'Carrier local charges per container (USD)', false, 'B/L, seal, ISPS'],
   ['b_ins_pct', 'Marine insurance (% of CFR value)', false, 'Leave empty if not counted'],
@@ -843,10 +856,19 @@ const IC_FIELDS = [
   ['b_duty_pct', 'Import duty (% of CIF)', false, ''],
   ['b_duty_min', 'Minimum duty (USD per MT)', false, 'If the tariff says "or USD x/MT, whichever is higher"'],
   ['b_clear', 'Import clearing & dry port handling per container (USD)', false, ''],
-  ['b_vat_pct', 'Import VAT / levies (% of CIF + duty)', false, 'Leave empty if exempt or recoverable'],
-  ['b_sell', 'Buyer wholesale selling price (USD per MT)', false, 'For the buyer profit estimate'],
+  ['b_levy_pct', 'Other import levies (% of CIF)', false, 'e.g. AU levy 0.2% + IDL 1.5%'],
+  ['b_vat_pct', 'Import VAT (% of CIF + duty)', false, 'Leave empty if exempt or recoverable'],
+  ['b_sell', 'Buyer selling price (USD per MT)', false, 'Leave empty to use the middle of the wholesale range'],
   ['local_ccy', 'Local currency code', false, 'e.g. RWF, AED, KES'],
   ['local_fx', 'Local currency per 1 USD', false, ''],
+  ['#', '7b. Destination market prices (local currency per kg)'],
+  ['m_whole_low', 'Wholesale / distributor: low', false, ''],
+  ['m_whole_high', 'Wholesale / distributor: high', false, ''],
+  ['m_semi_low', 'Semi-wholesale / regional: low', false, ''],
+  ['m_semi_high', 'Semi-wholesale / regional: high', false, ''],
+  ['m_retail_low', 'Retail / supermarkets: low', false, ''],
+  ['m_retail_high', 'Retail / supermarkets: high', false, ''],
+  ['m_notes', 'Market notes', false, 'Demand, import share, preferred packing'],
   ['#', '8. Contract clauses'],
   ['balance_days', 'Balance payment due (business days after BL scan)', false, ''],
   ['moisture_tol', 'Transit moisture tolerance', false, ''],
@@ -953,9 +975,10 @@ function computeBuyer_(fobUsd, mt, containers, b) {
   const port = v('b_port') * containers, lolo = v('b_lolo') * containers, inland = v('b_inland') * containers, bond = v('b_bond') * containers;
   const preCustoms = cif + port + lolo + inland + bond;
   const duty = r2(Math.max(cif * v('b_duty_pct') / 100, v('b_duty_min') * mt));
+  const levy = v('b_levy_pct') ? r2(cif * v('b_levy_pct') / 100) : 0;
   const clear = v('b_clear') * containers;
   const vat = v('b_vat_pct') ? r2((cif + duty) * v('b_vat_pct') / 100) : 0;
-  const landed = preCustoms + duty + clear + vat;
+  const landed = preCustoms + duty + levy + clear + vat;
   const sell = v('b_sell') * mt;
   const rows = [
     ['FOB purchase price (our invoice)', fobUsd],
@@ -969,11 +992,12 @@ function computeBuyer_(fobUsd, mt, containers, b) {
    .concat(bond ? [['Transit bond and cargo tracking', bond]] : [])
    .concat([['Landed cost before customs', preCustoms, 'sub']])
    .concat(duty ? [['Import duty (' + v('b_duty_pct') + '% of CIF' + (v('b_duty_min') ? ' or USD ' + v('b_duty_min') + '/MT, whichever is higher' : '') + ')', duty]] : [])
+   .concat(levy ? [['Other import levies (' + v('b_levy_pct') + '% of CIF)', levy]] : [])
    .concat(clear ? [['Import clearing and dry port handling', clear]] : [])
    .concat(vat ? [['Import VAT / levies (' + v('b_vat_pct') + '%)', vat]] : [])
    .concat([['Duty-paid landed cost', landed, 'total']]);
   const out = { rows: rows.map(r => ({ label: r[0], total: r2(r[1]), perMt: r2(r[1] / mt), kind: r[2] || '' })),
-                cif: r2(cif), landed: r2(landed), landedPerMt: r2(landed / mt) };
+                cif: r2(cif), cifPerMt: r2(cif / mt), duty: duty, landed: r2(landed), landedPerMt: r2(landed / mt) };
   if (sell) {
     out.sell = r2(sell); out.sellPerMt = r2(v('b_sell'));
     out.profit = r2(sell - landed); out.profitPerMt = r2((sell - landed) / mt); out.roi = r2((sell - landed) / landed * 100);
@@ -993,7 +1017,7 @@ function icDefaults_(p, S) {
     payment_option: /l\/?c/i.test(p.payment) ? 'B: 100% irrevocable confirmed sight L/C' : 'A: 30% advance + 70% against BL copy',
     shipment_window: p.shipment, validity_days: setting_(S, 'Quotation validity (days)', 7),
     q_moisture: rice ? '13.5%' : '', q_broken: rice ? '5%' : '', q_fm_inorg: rice ? '0.1%' : '', q_fm_org: rice ? '0.4%' : '',
-    q_damaged: rice ? '1.5%' : '', q_milling: rice ? 'Well-milled, 100% sortexed, double polished' : '',
+    q_damaged: rice ? '1.5%' : '', cfs_facility: setting_(S, 'CHA / CFS partner', '') ? setting_(S, 'CHA / CFS partner', '') + ' CFS' : '', q_milling: rice ? 'Well-milled, 100% sortexed, double polished' : '',
     q_aflatoxin: 'Total B1+B2+G1+G2 < 4 ppb', q_heavy: 'Within WHO limits', q_other: p.notes && p.notes !== 'None' ? String(p.notes).replace(/^\[(AR|FR)\]\s*/, '') : '',
     mill_name: setting_(S, 'Mill name', ''), mill_location: setting_(S, 'Mill / origin', ''),
     mill_price: setting_(S, 'Default mill price (INR per 100 kg)', ''), inland_km: setting_(S, 'Inland distance (km)', ''),
@@ -1002,7 +1026,7 @@ function icDefaults_(p, S) {
     stuffing: 'Direct CFS stuffing', pod: port.replace(/\s*\(transit\)$/, ''), final_dest: p.final_dest || '',
     transit_regime: /\(transit\)$/.test(port) ? 'Bonded transit to ' + p.country : '',
     fx: setting_(S, 'USD rate (INR per 1 USD)', 94.85), margin_pct: setting_(S, 'Margin (% of cargo cost)', 10),
-    gst_pct: setting_(S, 'GST on logistics services (%)', 18), b_sell: p.price || '',
+    gst_pct: setting_(S, 'GST on logistics services (%)', 18),
     balance_days: 3, moisture_tol: '±0.75%', payload: '30.48 MT (20 ft heavy-tested)', forex_recal: 1.5, free_days: 14,
     demurrage: 'INR 2,000 per week per box', t_procure: '2-3', t_cfs: '2', t_cha: '2', t_ready: '7-10', t_sea: '', t_inland: ''
   };
@@ -1043,6 +1067,7 @@ function icSheet_(p, cfg, create) {
   rows.push(['__lines__', 'Cost item', 'Rate (INR)', 'Per (MT / bag / container / shipment)', 'GST (Y/N)', 'Include (Y/N)', 'Basis']);
   cfg.rates.forEach(x => rows.push(['line', x.item, x.rate == null ? '' : x.rate, x.per, x.gst ? 'Y' : 'N', x.include ? 'Y' : 'N', x.basis]));
   const width = 7;
+  sh.getRange(1, 3, rows.length + 200, 1).setNumberFormat('@');
   sh.getRange(1, 1, rows.length, width).setValues(rows.map(r => r.concat(Array(width - r.length).fill(''))));
   sh.getRange(1, 1, 1, width).setFontWeight('bold').setBackground('#1B4D3E').setFontColor('#FFFFFF');
   rows.forEach((r, i) => {
@@ -1053,6 +1078,13 @@ function icSheet_(p, cfg, create) {
   sh.setColumnWidth(2, 330); sh.setColumnWidth(3, 300); sh.setColumnWidth(4, 360); sh.setColumnWidths(5, 3, 110);
   sh.hideColumns(1); sh.setFrozenRows(1);
   return { sheet: sh, created: true };
+}
+
+// Sheets turns "13.5%" into 0.135 and "2-3" into a date; turn them back into what was typed.
+function icValue_(k, x) {
+  if (isDate_(x)) return /^t_/.test(k) ? (x.getMonth() + 1) + '-' + x.getDate() : Utilities.formatDate(x, 'Asia/Kolkata', 'dd MMM yyyy');
+  if (typeof x === 'number' && /^d?q_/.test(k) && x > 0 && x < 1) return +(x * 100).toFixed(3) + '%';
+  return typeof x === 'string' ? x.trim() : x;
 }
 
 // Reads the input tab into { v: {key: value}, lines: [...], missing: [labels] }.
@@ -1066,7 +1098,7 @@ function readIc_(sh) {
     if (k === 'line') {
       if (r[1]) lines.push({ item: String(r[1]), rate: num_(r[2]), per: String(r[3] || 'shipment').toLowerCase().trim(),
                                               gst: /^y/i.test(String(r[4])), include: !/^n/i.test(String(r[5])), basis: String(r[6] || '') });
-    } else if (labels[k]) v[k] = typeof r[2] === 'string' ? r[2].trim() : r[2];
+    } else if (labels[k]) v[k] = icValue_(k, r[2]);
   });
   const missing = Object.keys(labels).filter(k => labels[k][2] && (v[k] === '' || v[k] == null)).map(k => labels[k][1]);
   // An included cost line must have a rate (0 is allowed when it truly costs nothing).
@@ -1116,36 +1148,143 @@ function createInternalCosting() {
   ui.alert(r.message);
 }
 
-// Shared by the menu (and tests). inp = readIc_() result. Returns { message, costNo, pdfUrl, calc, buyer } or { missing }.
+// Fills empty buyer-side and market inputs from Gemini's figures. Returns the keys it filled. Pure.
+function applyAiFigures_(V, f, transit) {
+  const filled = [];
+  if (!f) return filled;
+  const map = [['b_freight', 'ocean_freight_usd_per_20ft'], ['b_local', 'carrier_local_usd_per_20ft'], ['b_port', 'dest_port_usd_per_20ft'],
+    ['b_lolo', 'dest_lolo_usd_per_20ft'], ['b_duty_pct', 'import_duty_pct'], ['b_levy_pct', 'other_levies_pct'],
+    ['b_clear', 'import_clearing_usd_per_20ft'], ['b_vat_pct', 'import_vat_pct'], ['local_ccy', 'local_currency'], ['local_fx', 'local_per_usd'],
+    ['m_whole_low', 'wholesale_local_per_kg_low'], ['m_whole_high', 'wholesale_local_per_kg_high'],
+    ['m_semi_low', 'semi_wholesale_local_per_kg_low'], ['m_semi_high', 'semi_wholesale_local_per_kg_high'],
+    ['m_retail_low', 'retail_local_per_kg_low'], ['m_retail_high', 'retail_local_per_kg_high'],
+    ['q_dest_std', 'dest_standard'], ['dq_moisture', 'dest_moisture_max'], ['dq_broken', 'dest_broken_max'], ['dq_aflatoxin', 'dest_aflatoxin_max']];
+  if (transit) map.push(['b_inland', 'inland_trucking_usd_per_20ft'], ['b_bond', 'transit_bond_usd_per_20ft']);
+  map.forEach(m => {
+    const x = f[m[1]];
+    if ((V[m[0]] === '' || V[m[0]] == null) && x !== null && x !== undefined && x !== '') {
+      if (typeof x === 'number' && /^dq_/.test(m[0])) V[m[0]] = x + (/aflatoxin/.test(m[0]) ? ' ppb' : '%');
+      else V[m[0]] = x;
+      filled.push(m[0]);
+    }
+  });
+  return filled;
+}
+
+// Go / No-Go scorecard. Pure: returns { verdict, rows: [[criterion, status, detail]] }.
+// status is GO, WATCH or STOP. Any STOP -> NO-GO; any WATCH -> GO WITH CONDITIONS.
+function decide_(o) {
+  const rows = [];
+  const add = (k, st, d) => rows.push([k, st, d]);
+  const pct = n => (Math.round(n * 100) / 100) + '%';
+  // 1. Our margin
+  add('Our margin', o.marginPct >= o.minMargin ? 'GO' : o.marginPct > 0 ? 'WATCH' : 'STOP',
+      pct(o.marginPct) + ' of cargo cost (minimum for GO: ' + o.minMargin + '%), ' + o.marginUsd + ' net');
+  // 2. Buyer's target price
+  if (o.target) {
+    const m = o.marginAtTarget;
+    add('Buyer target price', o.target >= o.fobPerMt ? 'GO' : m >= o.minMargin ? 'GO' : m > 0 ? 'WATCH' : 'STOP',
+        'USD ' + o.target + '/MT vs our FOB USD ' + o.fobPerMt.toFixed(2) + '/MT' + (o.target < o.fobPerMt ? '; at their price our margin would be ' + pct(m) : ''));
+  } else add('Buyer target price', 'WATCH', 'Not given; confirm the buyer accepts USD ' + o.fobPerMt.toFixed(2) + '/MT');
+  // 3. Payment security
+  add('Payment security', /^[AB]\b/i.test(o.payment) ? 'GO' : 'STOP', o.payment || 'Not set');
+  // 4. Registrations
+  add('Our registrations', o.licencesPending.length ? 'STOP' : 'GO',
+      o.licencesPending.length ? 'Not yet Active: ' + o.licencesPending.join(', ') : 'All Active');
+  // 5. Buyer viability
+  if (o.buyerRoi == null) add('Buyer profitability', 'WATCH', 'Buyer landed cost or selling price not available');
+  else add('Buyer profitability', o.buyerRoi >= o.minBuyer ? 'GO' : o.buyerRoi > 0 ? 'WATCH' : 'STOP',
+           pct(o.buyerRoi) + ' return on landed cost (minimum for GO: ' + o.minBuyer + '%)' + (o.aiBuyer ? '; uses AI estimates' : ''));
+  // 6. Price sanity against the destination market
+  if (o.wholesaleUsdLow) {
+    const ratio = o.fobPerMt / o.wholesaleUsdLow;
+    add('Price vs destination market', ratio < 0.35 ? 'WATCH' : 'GO',
+        'Our FOB is ' + Math.round(ratio * 100) + '% of the lowest wholesale price (USD ' + o.wholesaleUsdLow.toFixed(0) + '/MT)' + (ratio < 0.35 ? '. Unusually low: check the mill price and grade, and under-invoicing risk' : ''));
+  }
+  // 7. Inputs left at defaults
+  if (o.millDefault) add('Mill price', 'WATCH', 'Still the default from Cost Settings (INR ' + o.millPrice + '/100 kg). Get a quote for this grade.');
+  // 8. Destination inspection
+  if (o.inspectionNeeded && !o.inspectionCosted) add('Destination inspection', 'WATCH', o.inspection + ' is required but its cost line is not included');
+  // 9. Buyer documents
+  add('Buyer documents', o.buyerPending ? 'WATCH' : 'GO', o.buyerPending ? o.buyerPending + ' items still pending from the buyer' : 'All received');
+  const verdict = rows.some(r => r[1] === 'STOP') ? 'NO-GO' : rows.some(r => r[1] === 'WATCH') ? 'GO WITH CONDITIONS' : 'GO';
+  return { verdict, rows };
+}
+
+// Shared by the menu (and tests). inp = readIc_() result. Returns { message, costNo, pdfUrl, calc, buyer, decision } or { missing }.
 function costingRow_(sheet, row, cfg, inp) {
   if (inp.missing.length) return { missing: inp.missing };
   const p = rfqFromRow_(sheet, row);
-  const V = inp.v, S = cfg.settings;
+  const V = Object.assign({}, inp.v), S = cfg.settings;
   const val = k => (V[k] === '' || V[k] == null) ? '' : String(V[k]);
   const mt = num_(V.qty_mt), fx = num_(V.fx), bagKg = num_(V.bag_kg), marginPct = num_(V.margin_pct) || 0;
   const c = computeCosting_({ fx: fx, mt: mt, bagKg: bagKg, containerMt: num_(V.mt_per_ctr), millPer100kg: num_(V.mill_price),
     commodity: [val('commodity'), val('variety')].filter(Boolean).join(', '), mill: [val('mill_name'), val('mill_location')].filter(Boolean).join(', '),
     rates: inp.lines, marginPct: marginPct, gstPct: num_(V.gst_pct) });
+  const pol = val('pol'), pod = val('pod'), finalDest = val('final_dest'), country = val('buyer_country');
+  const year = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy');
+
+  // Destination research first, so its figures can fill empty buyer-side inputs.
+  let research = null;
+  if (!/^n/i.test(String(setting_(S, 'Gemini research (Y/N)', 'Y')))) {
+    const rp = Object.assign({}, p, { commodity: val('commodity'), grade: val('variety'), packing: bagKg + ' kg ' + val('bag_type'),
+      port: pod + (finalDest ? ', ' + country + ' (transit)' : ''), final_dest: finalDest, country: country, incoterm: val('incoterm'), payment: val('payment_option') });
+    research = researchDestination_(rp, c, { mt: mt, pol: pol, fx: fx, model: String(setting_(S, 'Gemini model', 'gemini-3.8-flash')) });
+  }
+  const aiFilled = research && !research.error ? applyAiFigures_(V, research.figures, !!finalDest) : [];
+  const isAi = k => aiFilled.indexOf(k) >= 0;
+  const AI = ' (AI est.)';
+
+  // Market prices (local per kg) -> USD per MT
+  const lfx = num_(V.local_fx), ccy = val('local_ccy') || 'local';
+  const tiers = [['Wholesale / distributor', 'm_whole'], ['Semi-wholesale / regional', 'm_semi'], ['Retail / supermarkets', 'm_retail']]
+    .map(t => ({ name: t[0], lo: num_(V[t[1] + '_low']), hi: num_(V[t[1] + '_high']), ai: isAi(t[1] + '_low') }))
+    .filter(t => t.lo || t.hi);
+  const usdMt = perKg => lfx ? perKg * 1000 / lfx : null;
+  const whole = tiers[0] && tiers[0].name.indexOf('Wholesale') === 0 ? tiers[0] : null;
+  let sellAi = false;
+  if (!num_(V.b_sell) && whole && lfx) { V.b_sell = Math.round(usdMt(((whole.lo || whole.hi) + (whole.hi || whole.lo)) / 2) * 100) / 100; sellAi = whole.ai; }
   const B = computeBuyer_(c.fobUsd, mt, c.containers, V);
+  const aiBuyer = !!B && (aiFilled.some(k => /^b_/.test(k)) || sellAi);
 
   const props = PropertiesService.getScriptProperties();
-  const year = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy');
   const seq = Number(props.getProperty('costSeq_' + year) || 0) + 1;
   props.setProperty('costSeq_' + year, String(seq));
   const costNo = 'BV-IC-' + year + '-' + ('00' + seq).slice(-3);
   props.setProperty('costFob_' + p.ref, c.fobUsdPerMt.toFixed(2));
 
+  // Decision
+  const licences = COST_SETTINGS_DEFAULT.filter(d => /^Licence: /.test(d[0])).map(d => [d[0].replace(/^Licence: /, ''), String(setting_(S, d[0], 'Not entered'))]);
+  const notActive = licences.filter(l => !/^(active|not needed|n\/a|not applicable)/i.test(l[1]) && !(/RCAC/.test(l[0]) && /basmati/i.test(val('commodity')) && !/non/i.test(val('commodity')))).map(l => l[0]);
+  const buyerNeeds = [['Full company name and registered address', val('buyer_address') ? 'Received' : ''], ['Tax ID (TIN / VAT no.)', val('buyer_tin')],
+    ['Signed proforma invoice and purchase order', ''], ['30% advance (SWIFT MT103) or confirmed sight L/C', ''], ['Import declaration / permit', val('import_permit')],
+    ['Shipping line booking or freight nomination', val('shipping_line')],
+    ['Consignee and notify party wording for the B/L', val('consignee') ? val('consignee') + (val('notify_party') ? ' / notify: ' + val('notify_party') : '') : ''],
+    ['Clearing agent at destination', val('clearing_agent')]].concat(finalDest ? [['Final dry port / inland destination', finalDest]] : []);
+  const cargoInr = c.lines[0].inr;
+  const target = num_(p.price);
+  const marginAtTarget = target ? (target * mt * fx - c.cost) / cargoInr * 100 : null;
+  const inspectionCosted = c.lines.some(l => /PVoC|CoC|inspection/i.test(l.item));
+  const decision = decide_({
+    marginPct: marginPct, minMargin: num_(setting_(S, 'Minimum margin for GO (%)', 8)), marginUsd: 'USD ' + c.marginUsd.toFixed(2),
+    target: target, fobPerMt: c.fobUsdPerMt, marginAtTarget: marginAtTarget, payment: val('payment_option'), licencesPending: notActive,
+    buyerRoi: B && B.sell ? B.roi : null, minBuyer: num_(setting_(S, 'Minimum buyer return for GO (%)', 8)), aiBuyer: aiBuyer,
+    wholesaleUsdLow: whole && lfx ? usdMt(whole.lo || whole.hi) : null,
+    millDefault: num_(V.mill_price) === num_(setting_(S, 'Default mill price (INR per 100 kg)', '')), millPrice: num_(V.mill_price),
+    inspectionNeeded: !!val('dest_inspection'), inspectionCosted: inspectionCosted, inspection: val('dest_inspection'),
+    buyerPending: buyerNeeds.filter(b => !b[1]).length });
+
   const grp = n => Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   const inr = n => (n < 0 ? '-' : '') + 'INR ' + grp(n);
   const usd = n => (n < 0 ? '-' : '') + 'USD ' + grp(n);
-  const loc = n => num_(V.local_fx) && val('local_ccy') ? '  (~' + val('local_ccy') + ' ' + Math.round(n * num_(V.local_fx)).toLocaleString('en-US') + ')' : '';
+  const lc = n => lfx && val('local_ccy') ? val('local_ccy') + ' ' + Math.round(n * lfx).toLocaleString('en-US') : '';
+  const loc = n => lc(n) ? '  (~' + lc(n) + ')' : '';
   const fmt = d => Utilities.formatDate(d, 'Asia/Kolkata', 'dd MMM yyyy');
-  const GREEN = '#1B4D3E', GOLD = '#8A6508', GREY = '#5A6A72', CREAM = '#F8F5EC';
-  const pol = val('pol'), pod = val('pod'), finalDest = val('final_dest');
-  const route = pod + (finalDest ? ' (transit) -> ' + finalDest + ', ' + val('buyer_country') : ', ' + val('buyer_country'));
+  const GREEN = '#1B4D3E', GOLD = '#8A6508', GREY = '#5A6A72', CREAM = '#F8F5EC', RED = '#9B1C1C';
   const validDays = num_(V.validity_days) || 7;
   const NA = 'To confirm';
   const or = (k, d) => val(k) || d || NA;
+  const commodityFull = [val('commodity'), val('variety')].filter(Boolean).join(', ');
 
   const doc = DocumentApp.create(costNo + ' INTERNAL ' + (val('buyer') || 'Buyer'));
   const body = doc.getBody();
@@ -1160,7 +1299,7 @@ function costingRow_(sheet, row, cfg, inp) {
     e.setFontSize(o && o.size || 9.5).setBold(!!(o && o.bold)).setForegroundColor(o && o.color || '#1e293b');
     return x;
   };
-  const heading = t => { const x = body.appendParagraph(t); x.editAsText().setFontSize(11.5).setBold(true).setForegroundColor(GREEN); x.setSpacingBefore(10); return x; };
+  const sub = t => { const x = body.appendParagraph(t); x.editAsText().setFontSize(10).setBold(true).setForegroundColor(GOLD); x.setSpacingBefore(6); return x; };
   const table = (rows, opts) => {
     opts = opts || {};
     const t = body.appendTable(rows); t.setBorderColor('#D6DDE0');
@@ -1173,185 +1312,292 @@ function costingRow_(sheet, row, cfg, inp) {
     }
     (opts.bold || []).forEach(i => { for (let j = 0; j < t.getRow(i).getNumCells(); j++) { t.getCell(i, j).setBackgroundColor(CREAM); t.getCell(i, j).editAsText().setBold(true).setForegroundColor(GOLD); } });
     (opts.dark || []).forEach(i => { for (let j = 0; j < t.getRow(i).getNumCells(); j++) { t.getCell(i, j).setBackgroundColor(GREEN); t.getCell(i, j).editAsText().setBold(true).setForegroundColor('#FFFFFF'); } });
+    (opts.colour || []).forEach(x => { const cl = t.getCell(x[0], x[1]); cl.setBackgroundColor(x[2]); cl.editAsText().setBold(true).setForegroundColor('#FFFFFF'); });
     return t;
   };
   const kv = rows => table(rows.filter(r => r[1] !== '' && r[1] != null), { head: false, widths: [150, 360] });
   let n = 0;
-  const H = t => heading((++n) + '. ' + t);
+  const H = t => { const x = body.appendParagraph((++n) + '. ' + t.toUpperCase()); x.editAsText().setFontSize(11.5).setBold(true).setForegroundColor(GREEN); x.setSpacingBefore(12); return x; };
+  const stColour = { GO: '#15803D', WATCH: '#B45309', STOP: RED };
 
+  // ---------- Cover and decision ----------
   para('Bhumi Varahi Impex Pvt Ltd  |  ' + NOTIFY_EMAIL + '  |  +91 94929 92666', { size: 8, color: GREY });
   body.appendHorizontalRule();
-  para('INTERNAL QUOTATION & CONSIGNMENT COSTING', { size: 17, bold: true, color: GREEN });
-  para('CONFIDENTIAL. For internal use only. Do not send this document to the buyer.', { size: 9, bold: true, color: '#9B1C1C' });
+  para('CONSIGNMENT DECISION DOSSIER & INTERNAL QUOTATION', { size: 16, bold: true, color: GREEN });
+  para('CONFIDENTIAL. Single internal reference for deciding whether to take this consignment. Do not send to the buyer.', { size: 9, bold: true, color: RED });
   table([
-    ['Costing No.', costNo, 'Date of assessment', fmt(new Date())],
-    ['Buyer RFQ No.', p.ref, 'USD rate', '1 USD = INR ' + fx],
-    ['Delivery term', 'FOB ' + pol, 'Quote validity', validDays + ' calendar days'],
-    ['Payment', or('payment_option'), 'Buyer asked for', val('incoterm') || '-'],
+    ['Dossier No.', costNo, 'Date of assessment', fmt(new Date())],
+    ['Buyer RFQ No.', p.ref, 'Forex benchmark', '1 USD = INR ' + fx],
+    ['Delivery term', 'FOB ' + pol + ' (Incoterms 2020)', 'Quote validity', validDays + ' calendar days'],
+    ['Payment scope', or('payment_option'), 'Buyer asked for', val('incoterm') || '-'],
   ], { head: false, widths: [95, 160, 105, 150] });
 
-  H('Shipment summary');
+  const vColour = decision.verdict === 'GO' ? '#15803D' : decision.verdict === 'NO-GO' ? RED : '#B45309';
+  table([['DECISION: ' + decision.verdict]], { head: false, colour: [[0, 0, vColour]] }).getCell(0, 0).editAsText().setFontSize(14);
+  table([
+    ['FOB price to quote', usd(c.fobUsdPerMt) + ' / MT', 'Contract value', usd(c.fobUsd)],
+    ['Our net profit', inr(c.margin) + ' (' + usd(c.marginUsd) + ')', 'Margin / ROCE', marginPct + '% on cargo / ' + (c.margin / c.cost * 100).toFixed(2) + '% on capital'],
+    ['Buyer landed cost', B ? usd(B.landedPerMt) + ' / MT' + (aiBuyer ? AI : '') : 'Not available', 'Buyer profit', B && B.sell ? usd(B.profit) + ' (' + B.roi + '%)' : 'Not available'],
+  ], { head: false, widths: [95, 160, 105, 150] });
+  table([['Criterion', 'Status', 'Detail']].concat(decision.rows),
+    { widths: [130, 60, 320], colour: decision.rows.map((r, i) => [i + 1, 1, stColour[r[1]]]) });
+  para(decision.verdict === 'NO-GO' ? 'Do not commit funds or confirm the price until every STOP line is resolved.'
+    : decision.verdict === 'GO' ? 'All checks pass. Proceed to proforma invoice after the sign-offs in the last section.'
+    : 'Can proceed once the WATCH lines are confirmed. Record how each was cleared before sign-off.', { size: 9, bold: true, color: vColour });
+
+  // ---------- 1. Executive summary ----------
+  H('Executive summary & shipment architecture');
   kv([
     ['Buyer', [val('buyer'), val('contact') ? 'Attn: ' + val('contact') : ''].filter(Boolean).join(', ')],
     ['Buyer address', val('buyer_address')], ['Buyer tax ID', val('buyer_tin')],
-    ['Commodity', [val('commodity'), val('variety'), val('crop_year') ? 'crop ' + val('crop_year') : ''].filter(Boolean).join(', ')],
+    ['Commodity & variety', commodityFull + (val('crop_year') ? ' (crop ' + val('crop_year') + ')' : '')],
     ['HS code', val('hs_code')],
-    ['Quantity', mt + ' MT (' + c.bags + ' bags x ' + bagKg + ' kg' + (val('bag_type') ? ', ' + val('bag_type') : '') + ')'],
-    ['Bag branding', val('branding')],
-    ['Containers', c.containers + ' x ' + or('container_type', '20 ft FCL')],
-    ['Procurement origin', [val('mill_name'), val('mill_location')].filter(Boolean).join(', ') + (val('inland_km') ? ' (about ' + val('inland_km') + ' km to CFS)' : '')],
-    ['Inland transport', val('lorry')], ['CHA / CFS', val('cha')], ['Stuffing', val('stuffing')],
+    ['Total volume', mt + ' MT (' + (mt * 10) + ' quintals)'],
+    ['Packaging', c.bags + ' bags x ' + bagKg + ' kg' + (val('bag_type') ? ' ' + val('bag_type') : '') + (val('branding') ? ', ' + val('branding') : '')],
+    ['Procurement origin', [val('mill_name'), val('mill_location')].filter(Boolean).join(', ')],
+    ['Inland haulage', [val('lorry'), val('inland_km') ? 'about ' + val('inland_km') + ' km' : ''].filter(Boolean).join(', ')],
+    ['Container equipment', c.containers + ' x ' + or('container_type', '20 ft FCL') + (val('stuffing') ? ', ' + val('stuffing') : '')],
+    ['Customs house agent', val('cha')], ['CFS facility', val('cfs_facility')],
     ['Port of loading', pol], ['Shipping line', val('shipping_line')],
-    ['Port of discharge', pod + (finalDest ? ' (transit port)' : '')],
-    ['Final destination', finalDest ? finalDest + ', ' + val('buyer_country') + (val('corridor') ? ' via ' + val('corridor') : '') : val('buyer_country')],
-    ['Transit regime', val('transit_regime')], ['Destination inspection', val('dest_inspection')],
+    ['Discharge / transit port', pod + (finalDest ? ' (transit)' : '')],
+    ['Final destination', finalDest ? finalDest + ', ' + country + (val('corridor') ? ' via ' + val('corridor') : '') : country],
+    ['Transit status', val('transit_regime')], ['Destination inspection', val('dest_inspection')],
     ['Shipment window', val('shipment_window')],
   ]);
 
-  const qrows = [['Moisture', 'q_moisture'], ['Broken grains', 'q_broken'], ['Foreign matter (inorganic)', 'q_fm_inorg'], ['Foreign matter (organic)', 'q_fm_org'],
-    ['Damaged / discoloured / chalky', 'q_damaged'], ['Milling degree & polish', 'q_milling'], ['Aflatoxin', 'q_aflatoxin'], ['Heavy metals', 'q_heavy'], ['Other', 'q_other']]
-    .filter(q => val(q[1])).map(q => [q[0], val(q[1])]);
-  if (qrows.length || val('q_dest_std')) {
-    H('Quality specification');
-    if (qrows.length) table([['Parameter', 'Bhumi Varahi export standard']].concat(qrows), { widths: [180, 330] });
-    if (val('q_dest_std')) para('Destination standard to meet: ' + val('q_dest_std'), { size: 9, bold: true, color: GOLD });
-  }
+  // ---------- 2. Buyer-view proforma ----------
+  H('Commercial proforma quotation (buyer view)');
+  const specs = ['Variety: ' + (val('variety') || val('commodity'))]
+    .concat(val('q_milling') ? [val('q_milling')] : [])
+    .concat([['Max broken', 'q_broken'], ['max moisture', 'q_moisture'], ['max foreign matter', 'q_fm_inorg']].filter(q => val(q[1])).length ? ['Specs: ' + [['max ' + val('q_broken') + ' brokens', 'q_broken'], ['max ' + val('q_moisture') + ' moisture', 'q_moisture'], ['max ' + val('q_fm_inorg') + ' foreign matter', 'q_fm_inorg']].filter(q => val(q[1])).map(q => q[0]).join(', ')] : [])
+    .concat(['Packing: ' + c.bags + ' x ' + bagKg + ' kg ' + (val('bag_type') || 'bags'), 'Delivery: loaded on board at ' + pol])
+    .concat(finalDest ? ['In transit to ' + finalDest + ', ' + country + ' via ' + pod] : ['Destination: ' + pod + ', ' + country]);
+  table([
+    ['Item description & specifications', 'Quantity', 'Unit rate (FOB)', 'Total (FOB)'],
+    [commodityFull + (val('crop_year') ? ' (crop ' + val('crop_year') + ')' : '') + '\n- ' + specs.join('\n- '), mt + ' MT\n(' + c.bags + ' bags)',
+     inr(c.fobPerMt) + ' / MT\n' + usd(c.fobUsdPerMt) + ' / MT', inr(c.fob) + '\n' + usd(c.fobUsd)],
+    ['TOTAL FOB ' + pol.toUpperCase() + ' CONTRACT VALUE', '', '', usd(c.fobUsd)],
+  ], { widths: [250, 70, 95, 95], dark: [2] });
+  table([
+    ['Commercial terms & scope', 'Turnaround & execution schedule'],
+    ['- Incoterm: FOB ' + pol + ' (Incoterms 2020)\n- Included: milling, packing, inland freight, pre-FOB insurance, CFS rebagging & stuffing, fumigation, CHA clearance, phyto, COO' + (inspectionCosted ? ', ' + (val('dest_inspection') || 'destination inspection') : '') + ', bank e-BRC documentation\n- Currency benchmark: 1 USD = INR ' + fx + '\n- Quotation validity: ' + validDays + ' calendar days',
+     '- Procurement & haulage: ' + or('t_procure', '2-3') + ' days from advance\n- CFS rebagging, sampling & stuffing: ' + or('t_cfs', '2') + ' days\n- CHA filing (LEO) & gate-in: ' + or('t_cha', '2') + ' days\n- Total cargo readiness: ' + or('t_ready', '7-10') + ' days, matched to the booking window'],
+  ], { widths: [255, 255] });
 
-  H('Cost build-up: mill to ship\'s rail (FOB)');
-  const rows = [['No', 'Cost component', 'Basis', 'Cost (INR)', 'Cost (USD)']]
+  // ---------- 3. Cost accounting ----------
+  H('Master cost accounting & CHA breakdown');
+  para('Cost build-up from ' + (val('mill_location') || 'the mill') + ' to ship\'s rail at ' + pol + ', with CHA services, CFS tariffs and pre-FOB provisions itemised.', { size: 9 });
+  const rows = [['No', 'Cost component', 'Tariff base / service', 'Cost (INR)', 'Cost (USD)']]
     .concat(c.lines.map((l, i) => [String(i + 1), l.item, l.basis, inr(l.inr), usd(l.usd)]));
-  rows.push(['', 'Net cost (break-even at ship\'s rail)', '', inr(c.cost), usd(c.costUsd)]);
-  rows.push([String(c.lines.length + 1), 'Exporter margin (' + marginPct + '% of cargo cost)', 'INR ' + c.marginPerMt.toFixed(2) + ' / MT net return', inr(c.margin), usd(c.marginUsd)]);
-  rows.push(['', 'FINAL FOB PRICE TO QUOTE', '', inr(c.fob), usd(c.fobUsd)]);
+  rows.push(['', 'Net landed cost (break-even at ship\'s rail)', '', inr(c.cost), usd(c.costUsd)]);
+  rows.push([String(c.lines.length + 1), 'Target exporter margin (' + marginPct + '% on cargo base)', 'INR ' + grp(c.marginPerMt) + ' / MT net return', inr(c.margin), usd(c.marginUsd)]);
+  rows.push(['', 'FINAL FOB ' + pol.toUpperCase() + ' PRICE (to quote buyer)', '', inr(c.fob), usd(c.fobUsd)]);
   table(rows, { widths: [24, 150, 170, 85, 80], bold: [rows.length - 3], dark: [rows.length - 1] });
+  sub('Partner tariff schedule (' + (val('cha') || 'CHA / CFS') + ')');
+  table([['Tariff / activity', 'Rate', 'Status & scope']].concat(inp.lines.map(x => [x.item, x.rate == null ? 'Rate not entered' : 'INR ' + grp(x.rate) + ' / ' + x.per + (x.gst ? ' + GST' : ''), (x.include ? 'Included. ' : 'Optional, not in this costing. ') + x.basis])),
+    { widths: [170, 120, 220] });
+  para('Statutory GST of ' + (num_(V.gst_pct) || 18) + '% applies to taxable CFS / CHA services and is claimable as export input credit. CTO / SRF and demurrage are charged at actuals when they occur.', { size: 8.5, color: GREY });
 
-  H('Price to quote the buyer');
+  // ---------- 4. Market intelligence ----------
+  H('Destination market intelligence & pricing (' + (finalDest || pod || country) + ')');
+  if (tiers.length) {
+    table([['Market level', 'Price per kg (' + ccy + ')', 'Price per ' + bagKg + ' kg bag', 'Price per MT (USD)']].concat(tiers.map(t => {
+      const r = (a, b, f) => [a, b].filter(x => x).map(f).join(' - ');
+      return [t.name + (t.ai ? AI : ''), r(t.lo, t.hi, x => ccy + ' ' + Math.round(x).toLocaleString('en-US')), r(t.lo, t.hi, x => ccy + ' ' + Math.round(x * bagKg).toLocaleString('en-US')),
+              lfx ? r(t.lo, t.hi, x => usd(usdMt(x))) : 'Enter local currency rate'];
+    })), { widths: [140, 120, 120, 130] });
+  } else para('No market prices entered. Fill section 7b of the input tab, or turn on Gemini research.', { size: 9, color: GREY });
+  if (val('m_notes')) para(val('m_notes'), { size: 9 });
   kv([
-    ['FOB price per MT', usd(c.fobUsdPerMt) + '   (' + inr(c.fobPerMt) + ')'],
-    ['Contract value', usd(c.fobUsd) + ' for ' + mt + ' MT, FOB ' + pol],
-    ['Buyer target', p.price ? 'USD ' + p.price + ' / MT  (' + (Number(p.price) >= c.fobUsdPerMt ? 'at or above our FOB price' : 'BELOW our FOB price by ' + usd(c.fobUsdPerMt - Number(p.price)) + ' / MT') + ')' : ''],
+    ['Exchange rate', lfx ? '1 USD = ' + lfx + ' ' + ccy + (isAi('local_fx') ? AI : '') : ''],
+    ['HS classification', val('hs_code')],
+    ['Import duty', val('b_duty_pct') ? val('b_duty_pct') + '% of CIF' + (val('b_duty_min') ? ' or USD ' + val('b_duty_min') + '/MT, whichever is higher' : '') + (isAi('b_duty_pct') ? AI : '') : ''],
+    ['Other levies', val('b_levy_pct') ? val('b_levy_pct') + '% of CIF' + (isAi('b_levy_pct') ? AI : '') : ''],
+    ['Import VAT', val('b_vat_pct') ? val('b_vat_pct') + '%' + (isAi('b_vat_pct') ? AI : '') : ''],
+    ['Quality benchmark', val('q_dest_std') ? val('q_dest_std') + (isAi('q_dest_std') ? AI : '') : ''],
   ]);
-  if (/^(CFR|CIF)/i.test(val('incoterm'))) para('The buyer asked for ' + val('incoterm') + '. Add ocean freight to ' + (pod || val('buyer_country')) + (/^CIF/i.test(val('incoterm')) ? ' and marine insurance' : '') + ' before quoting; the figures above are FOB only.', { size: 9, bold: true, color: GOLD });
 
-  H('Exporter net return');
+  // ---------- 5. Profit economics ----------
+  H('Consignment profit economics & landed cost analysis');
+  sub('Part A: Exporter net return (Bhumi Varahi Impex)');
   table([
     ['Financial metric', 'Amount (INR)', 'Amount (USD)'],
-    ['Gross FOB revenue (' + mt + ' MT @ ' + usd(c.fobUsdPerMt) + ' / MT)', inr(c.fob), usd(c.fobUsd)],
-    ['Less: total cost', inr(-c.cost), usd(-c.costUsd)],
-    ['Net exporter profit', inr(c.margin), usd(c.marginUsd)],
-    ['Margin on cargo cost', marginPct + '%  (' + inr(c.marginPerMt) + ' / MT)', usd(c.marginUsd / mt) + ' / MT'],
-  ], { widths: [250, 130, 130], bold: [3] });
-
+    ['Gross export FOB revenue (' + mt + ' MT @ ' + usd(c.fobUsdPerMt) + ' / MT)', inr(c.fob), usd(c.fobUsd)],
+    ['Less: total net operational cost', inr(-c.cost), usd(-c.costUsd)],
+    ['NET REALISED EXPORTER PROFIT', inr(c.margin), usd(c.marginUsd)],
+    ['Net margin on base procurement', marginPct + '% (' + inr(c.marginPerMt) + ' / MT)', usd(c.marginUsd / mt) + ' / MT'],
+    ['Return on capital employed per consignment', (c.margin / c.cost * 100).toFixed(2) + '% over a ' + or('t_ready', '7-10') + ' day cycle', ''],
+  ].concat(target ? [['At the buyer\'s target of USD ' + target + ' / MT', inr(target * mt * fx - c.cost) + ' profit', marginAtTarget.toFixed(2) + '% on cargo']] : []),
+  { widths: [250, 130, 130], bold: [3] });
   if (B) {
-    H('Buyer landed cost and profit (estimate)');
-    const br = [['Cost component', 'Per MT (USD)', 'Total (USD)']].concat(B.rows.map(r => [r.label, usd(r.perMt), usd(r.total) + (r.kind === 'total' ? loc(r.total) : '')]));
+    sub('Part B: Importer / buyer landed cost & profitability' + (aiBuyer ? ' (includes AI estimates)' : ''));
+    const keyOf = { 'Ocean freight': 'b_freight', 'Carrier local': 'b_local', 'Port / transit': 'b_port', 'Lo-Lo': 'b_lolo', 'Overland': 'b_inland', 'Transit bond': 'b_bond', 'Import duty': 'b_duty_pct', 'Other import levies': 'b_levy_pct', 'Import clearing': 'b_clear', 'Import VAT': 'b_vat_pct' };
+    const tag = lbl => Object.keys(keyOf).some(k => lbl.indexOf(k) === 0 && isAi(keyOf[k])) ? AI : '';
+    const br = [['Cost & realisation component', 'Per MT (USD)', 'Total (USD)']].concat(B.rows.map(r => [r.label + tag(r.label), usd(r.perMt), usd(r.total) + (r.kind === 'total' ? loc(r.total) : '')]));
     const subs = [], tot = [];
     B.rows.forEach((r, i) => { if (r.kind === 'sub') subs.push(i + 1); if (r.kind === 'total') tot.push(i + 1); });
     if (B.sell) {
-      br.push(['Buyer wholesale sales (at ' + usd(B.sellPerMt) + ' / MT)', usd(B.sellPerMt), usd(B.sell) + loc(B.sell)]);
-      br.push(['Buyer estimated profit (' + B.roi + '% on landed cost)', (B.profit >= 0 ? '+' : '') + usd(B.profitPerMt), (B.profit >= 0 ? '+' : '') + usd(B.profit) + loc(B.profit)]);
+      br.push(['Projected importer sales realisation (at ' + usd(B.sellPerMt) + ' / MT)' + (sellAi || isAi('m_whole_low') && !num_(inp.v.b_sell) ? AI : ''), usd(B.sellPerMt), usd(B.sell) + loc(B.sell)]);
+      br.push(['PROJECTED IMPORTER NET PROFIT (' + B.roi + '% ROI)', (B.profit >= 0 ? '+' : '') + usd(B.profitPerMt), (B.profit >= 0 ? '+' : '') + usd(B.profit) + loc(B.profit)]);
     }
     table(br, { widths: [270, 110, 130], bold: subs.concat(B.sell ? [br.length - 1] : []), dark: tot });
+    sub('Part C: Two-party consignment profit summary');
     table([
-      ['Stakeholder', 'Outlay', 'Revenue', 'Net profit'],
-      ['Bhumi Varahi Impex (seller)', inr(c.cost) + '\n(' + usd(c.costUsd) + ')', inr(c.fob) + '\n(' + usd(c.fobUsd) + ' FOB)', '+' + inr(c.margin) + ' (' + usd(c.marginUsd) + ')\n' + marginPct + '% on cargo'],
-      ['Buyer / importer', usd(B.landed) + loc(B.landed), B.sell ? usd(B.sell) + loc(B.sell) : 'Selling price not entered', B.sell ? (B.profit >= 0 ? '+' : '') + usd(B.profit) + '\n' + B.roi + '% on landed cost' : '-'],
-    ], { widths: [130, 130, 130, 120] });
-    para('Buyer-side figures are estimates from the inputs tab. Confirm freight, duties and local charges before using them in negotiation.', { size: 8.5, color: GREY });
-  }
+      ['Stakeholder', 'Financial outlay', 'Realised revenue', 'Net profit & yield'],
+      ['Seller / exporter\n(Bhumi Varahi Impex)', inr(c.cost) + '\n(' + usd(c.costUsd) + ')', inr(c.fob) + '\n(' + usd(c.fobUsd) + ' FOB)', '+' + inr(c.margin) + ' (' + usd(c.marginUsd) + ')\n' + marginPct + '% cargo margin (' + (c.margin / c.cost * 100).toFixed(2) + '% ROCE)'],
+      ['Buyer / importer\n(' + (val('buyer') || country) + ')', usd(B.landed) + (lc(B.landed) ? '\n(~' + lc(B.landed) + ')' : ''), B.sell ? usd(B.sell) + (lc(B.sell) ? '\n(~' + lc(B.sell) + ')' : '') : 'Selling price not entered', B.sell ? (B.profit >= 0 ? '+' : '') + usd(B.profit) + (lc(B.profit) ? '\n' + lc(B.profit) : '') + '\n(' + B.roi + '% ROI)' : '-'],
+    ], { widths: [120, 130, 130, 130] });
+    if (B.sell) para('COMMERCIAL TAKEAWAY: ' + (B.profit > 0
+      ? 'After ocean freight, ' + (finalDest ? 'overland transit, ' : '') + 'duties and local charges, the buyer nets about ' + usd(B.profit / c.containers) + ' per container (' + B.roi + '% on landed cost). Our FOB offer of ' + usd(c.fobUsdPerMt) + ' / MT leaves the buyer a ' + (B.roi >= 15 ? 'strong' : B.roi >= 8 ? 'workable' : 'thin') + ' margin.'
+      : 'At these figures the buyer loses ' + usd(-B.profit) + ' on the consignment. Expect strong price pressure or a cancelled order.'), { size: 9, bold: true, color: GOLD });
+  } else para('Part B (buyer landed cost) skipped: no ocean freight entered and no AI figure available. Fill section 7 of the input tab.', { size: 9, color: GREY });
 
-  H('Payment rules (no credit)');
-  para('Cargo leaves the mill only after advance clearance. Original documents are released only after 100% of contract funds are in our bank. No open account, DA or deferred credit.', { size: 9 });
+  // ---------- 6. Payment ----------
+  H('Non-negotiable payment terms & zero-credit policy');
+  para('NO CREDIT UNDER ANY CIRCUMSTANCES. Bhumi Varahi Impex works on a 100% secured cash / L/C basis. Open account, documents against acceptance, post-dated cheques and deferred credit are not allowed. Cargo does not leave the mill without advance clearance, and original Bills of Lading or telex release are not given until 100% of contract funds are in our bank.', { size: 9, bold: true, color: RED });
   table([
-    ['Structure', 'How it works', 'Release condition'],
-    ['Option A: 30% advance + 70% against BL copy', '30% T/T on signing the proforma invoice; triggers mill procurement. 70% T/T within ' + or('balance_days', 3) + ' business days of the BL scan, phyto and other documents.', 'Original BL / documents released or telex release only after 100% is credited.'],
-    ['Option B: 100% irrevocable confirmed sight L/C', 'Sight L/C from a prime bank, confirmed by a first-class Indian bank. No usance. L/C charges for the buyer\'s account.', 'Payment guaranteed by the confirming bank on compliant documents.'],
+    ['Approved structure', 'How it works', 'Release condition'],
+    ['Option A (preferred): 30% advance + 70% against BL copy', '30% T/T on signing the proforma invoice; triggers mill procurement and haulage. 70% T/T within ' + or('balance_days', 3) + ' business days of the non-negotiable BL scan, phyto' + (val('dest_inspection') ? ' and ' + val('dest_inspection') : '') + '.', 'Original BL, phyto and certificates released or telex release only after 100% is credited.'],
+    ['Option B: 100% irrevocable confirmed sight L/C', 'Sight L/C from a prime bank, confirmed by a first-class Indian bank. No usance (no 30/60/90 days). Advising, confirmation and amendment charges for the buyer.', 'Payment guaranteed by the confirming bank on compliant documents within L/C validity.'],
   ], { widths: [130, 230, 150] });
   para('Selected for this deal: ' + or('payment_option'), { size: 9, bold: true, color: GOLD });
-
   const bank = [['Account name', 'Bank: account name'], ['Bank', 'Bank: bank name'], ['Branch', 'Bank: branch'], ['Account number', 'Bank: account number'],
-    ['AD code', 'Bank: AD code'], ['IFSC', 'Bank: IFSC'], ['SWIFT / BIC', 'Bank: SWIFT / BIC'], ['Purpose code', 'Bank: remittance purpose code']]
+    ['AD code', 'Bank: AD code'], ['IFSC', 'Bank: IFSC'], ['SWIFT / BIC', 'Bank: SWIFT / BIC'], ['Remittance purpose code', 'Bank: remittance purpose code']]
     .map(b => [b[0], String(setting_(S, b[1], ''))]);
-  const clauses = [
-    ['Balance payment', val('balance_days') ? 'Within ' + val('balance_days') + ' business days of the BL scan. Demurrage at destination caused by late payment is for the buyer\'s account.' : ''],
-    ['Container payload', val('payload') ? 'Carrier booking must specify ' + val('payload') + '. Any overweight surcharge is for the buyer\'s account.' : ''],
-    ['Weight and moisture', val('moisture_tol') ? 'Port of loading VGM weight is final. Natural transit moisture variation of ' + val('moisture_tol') + ' is accepted.' : ''],
-    ['Currency protection', val('forex_recal') ? 'Priced at INR ' + fx + ' / USD. If the INR strengthens by more than ' + val('forex_recal') + '% before the advance arrives, the USD price is recalculated.' : ''],
+  sub('Exporter banking details');
+  if (bank.some(b => b[1] && b[0] !== 'Account name' && b[0] !== 'Remittance purpose code')) kv(bank);
+  else para('Not filled yet. Add the "Bank:" rows in ' + COST_SETTINGS_TAB + ' to print them here.', { size: 8.5, color: GREY });
+  sub('Protective contract clauses');
+  kv([
+    [or('balance_days', 3) + '-day payment & demurrage', 'Balance due within ' + or('balance_days', 3) + ' business days of the BL scan. Port demurrage at ' + (pod || 'destination') + ' caused by late payment is for the buyer\'s account.'],
+    ['Heavy-duty payload & OWS', val('payload') ? 'Carrier booking must specify ' + val('payload') + '. Any overweight surcharge is for the buyer\'s account.' : ''],
+    ['Weight finality & moisture', val('moisture_tol') ? 'Port of loading VGM weight is final. Natural transit moisture variation of ' + val('moisture_tol') + ' is accepted.' : ''],
+    ['Forex protection', val('forex_recal') ? 'Pegged at INR ' + fx + ' / USD. If the INR strengthens by more than ' + val('forex_recal') + '% before the advance arrives, the USD price is recalculated.' : ''],
     ['CFS free time', val('free_days') ? val('free_days') + ' days free at CFS; then ' + or('demurrage') + '.' : ''],
     ['Quote validity', validDays + ' calendar days from issue.'],
-  ];
-  H('Contract clauses and bank details');
-  kv(clauses);
-  if (bank.some(b => b[1] && b[0] !== 'Account name' && b[0] !== 'Purpose code')) kv(bank);
-  else para('Bank details: fill the "Bank:" rows in ' + COST_SETTINGS_TAB + ' to print them here.', { size: 8.5, color: GREY });
+  ]);
 
-  H('Registrations to have active before dispatch');
-  table([['Registration', 'Status / number (from ' + COST_SETTINGS_TAB + ')']].concat(
-    COST_SETTINGS_DEFAULT.filter(d => /^Licence: /.test(d[0])).map(d => [d[0].replace(/^Licence: /, ''), String(setting_(S, d[0], 'Not entered'))])), { widths: [250, 260] });
-  para('Shipment cannot be filed until each line is Active.', { size: 8.5, color: GREY });
+  // ---------- 7. Statutory register ----------
+  H('Statutory pre-shipment permissions & port setup register');
+  para('These registrations must be active before cargo leaves the mill or export declarations are filed. Status comes from ' + COST_SETTINGS_TAB + '.', { size: 9 });
+  const part = (title, items) => { sub(title); table([['Check', 'Registration / document', 'Status / scope']].concat(items.map(x => ['[  ]', x[0], x[1]])), { widths: [40, 220, 250] }); };
+  const st = name => (licences.filter(l => l[0].indexOf(name) === 0)[0] || ['', 'Not entered'])[1];
+  part('Part A: Mandatory KYC & port registration', [
+    ['PAN (company)', st('PAN')], ['Directors KYC (Aadhaar / DIN)', st('Directors KYC')], ['Import-Export Code (IEC, DGFT)', st('IEC')],
+    ['GST registration + LUT for zero-rated export', st('GST')], ['Bank AD code letter', st('Bank AD')], ['AD code registered at ' + (pol || 'port') + ' customs', st('AD code registered')],
+    ['ICEGATE EDI registration', st('ICEGATE')]]);
+  part('Part B: Shipment permissions & certificates', [
+    ['Commercial invoice (HS ' + (val('hs_code') || '-') + ', FOB value, bank AD details)', 'Prepare after contract'],
+    ['Packing list (' + c.bags + ' x ' + bagKg + ' kg, net ' + grp(mt * 1000).replace(/\.00$/, '') + ' kg)', 'Prepare after stuffing'],
+    ['Sales contract / purchase order (FOB, zero-credit, destination standards)', 'Pending signature'],
+    ['FSSAI licence', st('FSSAI')], ['APEDA RCMC', st('APEDA RCMC')],
+    ['APEDA RCAC (non-basmati rice allocation)', /rice/i.test(val('commodity')) && !/basmati/i.test(val('commodity')) || /non.?basmati/i.test(val('commodity')) ? st('APEDA RCAC') : 'Not needed for this product'],
+    ['Plant quarantine (PQIS) login for phyto', st('Plant quarantine')]]);
 
-  H('Information exchange with the buyer');
+  // ---------- 8. Information matrix ----------
+  H('Two-way information & requirement matrix');
+  table([['What we need from the buyer', 'Status']].concat(buyerNeeds.map(b => [b[0], b[1] || 'Pending'])), { widths: [300, 210] });
   table([
-    ['We need from the buyer', 'Status'],
-    ['Full company name and registered address', val('buyer_address') ? 'Received' : 'Pending'],
-    ['Tax ID (TIN / VAT no.)', val('buyer_tin') ? val('buyer_tin') : 'Pending'],
-    ['Signed proforma invoice and purchase order', 'Pending'],
-    ['30% advance (SWIFT MT103) or confirmed sight L/C', 'Pending'],
-    ['Import declaration / permit', val('import_permit') || 'Pending'],
-    ['Shipping line booking or freight nomination', val('shipping_line') || 'Pending'],
-    ['Consignee and notify party wording for the B/L', val('consignee') ? val('consignee') + (val('notify_party') ? ' / notify: ' + val('notify_party') : '') : 'Pending'],
-    ['Clearing agent at destination', val('clearing_agent') || 'Pending'],
-  ].concat(finalDest ? [['Final dry port / inland destination', finalDest]] : []), { widths: [300, 210] });
-  table([
-    ['We give the buyer', 'Issued by'],
-    ['Commercial invoice and packing list', 'Bhumi Varahi Impex'], ['Certificate of Origin', 'Chamber of Commerce'],
+    ['What the buyer needs from us', 'Issued by'],
+    ['Commercial invoice and packing list (signed)', 'Bhumi Varahi Impex'], ['Certificate of Origin (non-preferential)', 'Chamber of Commerce'],
     ['Phytosanitary certificate', 'Plant Quarantine (PQIS)'], ['Fumigation certificate', 'Accredited fumigator'],
-    ['VGM certificate', 'Terminal weighbridge / CHA'], ['Bill of Lading draft' + (finalDest ? ' with transit clause' : ''), 'Shipping line'],
+    ['Verified gross mass (VGM)', 'Terminal weighbridge / CHA'], ['Bill of Lading draft' + (finalDest ? ' with transit clause' : ''), 'Shipping line'],
   ].concat(val('dest_inspection') ? [[val('dest_inspection'), 'Inspection agency']] : []).concat([['Dispatch notice and courier tracking', 'Bhumi Varahi Impex']]), { widths: [300, 210] });
 
-  H('Shipping documents to dispatch');
+  // ---------- 9. Documents ----------
+  H('Shipping documentation dispatch checklist');
+  para('Once the vessel is loaded and the balance is received, this document set is compiled and dispatched:', { size: 9 });
   table([['Check', 'Document', 'Originals / copies', 'Issued by']].concat([
-    ['Bill of Lading' + (finalDest ? ' (with transit clause to ' + finalDest + ')' : ''), '3 originals + 3 copies', 'Shipping line'], ['Commercial invoice', '1 original + 3 copies', 'Bhumi Varahi Impex'],
+    ['Bill of Lading' + (finalDest ? ' (transit clause to ' + finalDest + ')' : ''), '3 originals + 3 copies', 'Shipping line'], ['Commercial invoice', '1 original + 3 copies', 'Bhumi Varahi Impex'],
     ['Packing list', '1 original + 3 copies', 'Bhumi Varahi Impex'], ['Certificate of Origin', '1 original + 1 copy', 'Chamber of Commerce'],
     ['Phytosanitary certificate', '1 original + 2 copies', 'Plant Quarantine (PQIS)'], ['Fumigation certificate', '1 original + 1 copy', 'Accredited fumigator'],
     ['VGM certificate', '1 electronic / print', 'Terminal weighbridge / CHA'],
-  ].concat(val('dest_inspection') || c.lines.some(l => /PVoC|CoC|inspection/i.test(l.item)) ? [[val('dest_inspection') || 'Certificate of Conformity (PVoC)', '1 original + 1 copy', 'SGS / Cotecna / BV']] : [])
+  ].concat(val('dest_inspection') || inspectionCosted ? [[val('dest_inspection') || 'Certificate of Conformity (PVoC)', '1 original + 1 copy', 'SGS / Cotecna / BV']] : [])
    .map(x => ['[  ]'].concat(x))), { widths: [40, 170, 140, 160] });
-  if (finalDest) para('B/L transit clause: "Cargo in transit to ' + finalDest + ', ' + val('buyer_country') + ' on account and risk of consignee".', { size: 9, bold: true, color: GOLD });
 
-  H('Execution roadmap');
-  const d = (k, dflt) => val(k) ? 'Days ' + val(k) : dflt;
-  table([['Stage', 'Phase', 'Key steps']].concat([
-    ['Day 1', 'Contract & advance', 'Send proforma invoice. Buyer pays 30% advance or opens confirmed sight L/C. Confirm funds and release procurement order.'],
-    [d('t_procure', 'Days 2-3'), 'Procurement & haulage', 'Bind inland insurance. Check quality at the mill' + (val('q_moisture') ? ' (moisture max ' + val('q_moisture') + ')' : '') + '. Order ' + c.bags + ' bags, load lorry to ' + (val('cha') || 'the CFS') + '.'],
-    [d('t_cfs', 'Days 4-5'), 'CFS receiving & stuffing', 'Weigh and check the cargo, rebag and stitch, line the container, add desiccant, stuff and fumigate.' + (val('dest_inspection') ? ' Draw samples for ' + val('dest_inspection') + '.' : '')],
-    [d('t_cha', 'Days 6-7'), 'Customs clearance', 'CHA files the shipping bill on ICEGATE, LEO granted, phyto and COO issued, VGM done.'],
-    ['Cargo ready in ' + or('t_ready', '7-10') + ' days', 'Terminal & loading', 'Move container to ' + pol + ', pay THC, load on board. Risk passes to the buyer under FOB.'],
-    ['After loading', 'Documents & settlement', 'Send document scans, collect the balance within ' + or('balance_days', 3) + ' business days, release originals, close EDPMS / e-BRC.'],
-  ]).concat(val('t_sea') || finalDest ? [['Destination', 'Buyer scope', 'Sea transit to ' + pod + (val('t_sea') ? ' about ' + val('t_sea') + ' days' : '') + (finalDest ? '; ' + (val('transit_regime') || 'transit') + ' overland to ' + finalDest + (val('t_inland') ? ' about ' + val('t_inland') + ' days' : '') : '') + '.']] : []),
-  { widths: [80, 120, 310] });
+  // ---------- 10. Technical specs ----------
+  H('Technical specifications & quality parameters');
+  const qp = [['Moisture', 'q_moisture', 'dq_moisture'], ['Broken grains', 'q_broken', 'dq_broken'], ['Foreign matter (inorganic)', 'q_fm_inorg', 'dq_fm_inorg'],
+    ['Foreign matter (organic)', 'q_fm_org', 'dq_fm_org'], ['Damaged / discoloured / chalky', 'q_damaged', 'dq_damaged'], ['Milling degree & polish', 'q_milling', ''],
+    ['Aflatoxin', 'q_aflatoxin', 'dq_aflatoxin'], ['Heavy metals (Pb / Cd)', 'q_heavy', 'dq_heavy'], ['Other', 'q_other', '']]
+    .filter(q => val(q[1]) || (q[2] && val(q[2]))).map(q => [q[0], val(q[1]) || '-', q[2] ? (val(q[2]) ? val(q[2]) + (isAi(q[2]) ? AI : '') : '-') : '']);
+  table([['Quality parameter', 'Bhumi Varahi export standard', (val('q_dest_std') || 'Destination standard') + (isAi('q_dest_std') ? AI : '')]].concat(qp), { widths: [150, 180, 180] });
+  sub('Bagging & containerisation standards');
+  ['Bag construction: ' + (val('bag_type') || 'export-grade bags') + ', ' + bagKg + ' kg net, machine-stitched with double-fold seam.',
+   'Desiccant: absorb gel / dry bags hung along the container top to prevent condensation.',
+   'Protective barrier: kraft paper floor and side lining, topped with water-resistant tarpaulin inside the container.',
+   'Fumigation seal: container fumigated under gas-tight seal before terminal transfer.']
+    .forEach(t => { const li = body.appendListItem(t); li.setGlyphType(DocumentApp.GlyphType.BULLET); li.editAsText().setFontSize(9).setBold(false).setForegroundColor('#1e293b'); });
 
-  H('Internal checks before sending the price');
-  table([['Check', 'Item', 'Owner']].concat([
-    ['Mill price and quality (moisture, broken %) confirmed', 'Procurement'], ['Inland insurance bound', 'Finance'], ['Bag quality and count confirmed', 'Packaging'],
-    ['Lorry rate and dispatch date fixed', 'Logistics'], ['Container booking, payload and overweight terms', 'CHA desk'], ['CFS slot and free time confirmed', 'CHA desk'],
-    ['Fumigation booked', 'CHA desk'], ['Weight / moisture tolerance clause in the contract', 'Commercial'],
-    ['Transit B/L clause instructed', 'Documentation'], ['Payment terms accepted by the buyer', 'Finance'], ['e-BRC / EDPMS reserve budgeted', 'Treasury'],
-  ].map(x => ['[  ]'].concat(x))), { widths: [40, 350, 120] });
+  // ---------- 11. Compliance framework ----------
+  H('Statutory compliance framework');
+  sub('Part A: Government of India export compliance (origin CHA formalities)');
+  table([['Instrument', 'Authority', 'Function'],
+    ['IEC & APEDA registration', 'DGFT / APEDA', 'Exporter registration' + (/rice/i.test(val('commodity')) ? ' and rice export allocation' : '')],
+    ['ICEGATE shipping bill & LEO', 'Indian Customs (' + (pol || 'port') + ')', 'Electronic export declaration, assessment, examination and Let Export Order via CHA'],
+    ['Phytosanitary certificate', 'Plant Quarantine (PQIS)', 'Confirms the cargo is free of quarantine pests'],
+    ['Fumigation certificate', 'Accredited fumigator', 'Dosage, exposure period and degassing before gate-in'],
+    ['Certificate of Origin', 'Chamber of Commerce / DGFT', 'Confirms Indian origin']], { widths: [150, 150, 210] });
+  sub('Part B: Destination' + (finalDest ? ' and transit' : '') + ' requirements');
+  table([['Requirement', 'Agency', 'What it involves']]
+    .concat(val('dest_inspection') ? [[val('dest_inspection'), 'Destination standards body / appointed agency', 'Pre-export verification against ' + (val('q_dest_std') || 'the destination standard') + '; lab tests for moisture, heavy metals and aflatoxin']] : [])
+    .concat(val('import_permit') || country ? [['Import declaration / permit', country + ' customs / regulator', val('import_permit') || 'Buyer files before shipment']] : [])
+    .concat(finalDest ? [['Transit clause on B/L', pod.split(',').slice(-1)[0].trim() + ' customs', 'B/L must state "Cargo in transit to ' + finalDest + ', ' + country + ' on account and risk of consignee" so no transit-country import tax applies'],
+                         ['Bonded overland transit', val('transit_regime') || 'Regional customs transit', 'Transit bond and cargo tracking seals from ' + pod + ' to ' + finalDest]] : []),
+    { widths: [150, 150, 210] });
 
-  // Destination research by Gemini with Google Search (only when a key is set and research is on).
-  let research = null;
-  if (!/^n/i.test(String(setting_(S, 'Gemini research (Y/N)', 'Y')))) {
-    const rp = Object.assign({}, p, { commodity: val('commodity'), grade: val('variety'), packing: bagKg + ' kg ' + val('bag_type'),
-      port: pod + (finalDest ? ', ' + val('buyer_country') + ' (transit)' : ''), final_dest: finalDest, country: val('buyer_country'), incoterm: val('incoterm'), payment: val('payment_option') });
-    research = researchDestination_(rp, c, { mt: mt, pol: pol, fx: fx, model: String(setting_(S, 'Gemini model', 'gemini-3.8-flash')) });
-  }
+  // ---------- 12. Incoterms matrix ----------
+  const term = (String(val('incoterm')).match(/^(FOB|CFR|CIF)/i) || ['FOB'])[0].toUpperCase();
+  H('Incoterms 2020 allocation matrix (' + term + ' ' + (term === 'FOB' ? pol : pod) + ')');
+  const ours = 'INCLUDED', theirs = 'BUYER\'S ACCOUNT';
+  table([['Cost / milestone', 'Bhumi Varahi', 'Buyer']].concat([
+    ['Procurement, packaging and rebagging', 1], ['Inland transport, mill to CFS', 1], ['CFS stuffing, desiccant, fumigation', 1],
+    ['CHA clearance, ICEGATE filing and LEO', 1], ['Phyto, COO' + (val('dest_inspection') ? ', ' + val('dest_inspection') : ''), 1], ['Origin THC and loading over ship\'s rail', 1],
+    ['Ocean freight to ' + (pod || 'destination port'), term !== 'FOB'], ['B/L charges, ISPS and seal', term !== 'FOB'],
+    ['Marine insurance' + (finalDest ? ' to ' + finalDest : ''), term === 'CIF'],
+    ['Discharge, ' + (finalDest ? 'transit clearance and overland trucking to ' + finalDest : 'import clearance and delivery'), false],
+    ['Import duty and taxes at destination', false]].map(r => [r[0], r[1] ? ours : '-', r[1] ? '-' : theirs])), { widths: [300, 105, 105] });
+
+  // ---------- 13. Roadmap ----------
+  H('Step-by-step consignment execution roadmap');
+  table([['Stage / timeline', 'Phase', 'Action steps & deliverables']].concat([
+    ['Stage 1 (Day 1)', 'Contract & advance', '1. Issue proforma invoice with weight and overweight clauses.\n2. Buyer sends 30% advance or opens confirmed sight L/C.\n3. Treasury confirms funds; issue procurement release.'],
+    ['Stage 2 (Days ' + or('t_procure', '2-3') + ')', 'Procurement & haulage', '1. Bind pre-FOB inland insurance.\n2. Inspector checks moisture' + (val('q_moisture') ? ' (< ' + val('q_moisture') + ')' : '') + ' and quality at ' + (val('mill_location') || 'the mill') + '.\n3. Order ' + c.bags + ' bags; dispatch to ' + (val('cfs_facility') || 'the CFS') + '.\n4. Dispatch at least 5-6 days before port cut-off.'],
+    ['Stage 3 (' + or('t_cfs', '2') + ' days)', 'CFS receiving & stuffing', '1. Unload and verify quality and weight.\n2. Rebag and double-stitch.\n3. Line the container, add desiccant.' + (val('dest_inspection') ? '\n4. Agency draws samples for ' + val('dest_inspection') + '.' : '') + '\n5. Stuff and fumigate under gas seal.'],
+    ['Stage 4 (' + or('t_cha', '2') + ' days)', 'CHA customs clearance', '1. CHA files the shipping bill on ICEGATE.\n2. Customs inspection; LEO granted.\n3. Phyto and COO issued.\n4. VGM weighment.'],
+    ['Stage 5 (ready in ' + or('t_ready', '7-10') + ' days)', 'Terminal drayage & loading', '1. Move container to ' + pol + '.\n2. Settle THC.\n3. Load on the nominated vessel.\n4. Risk passes to the buyer under FOB.'],
+    ['Stage 6 (post-loading)', 'Document release & settlement', '1. Carrier issues on-board B/L' + (finalDest ? ' with transit clause' : '') + '.\n2. Send document scans.\n3. Buyer pays balance within ' + or('balance_days', 3) + ' business days.\n4. Release originals or telex release.\n5. Close EDPMS and generate e-BRC.'],
+    ['Stage 7 (destination)', 'Buyer scope', '1. Vessel arrives at ' + pod + (val('t_sea') ? ' (about ' + val('t_sea') + ' days)' : '') + '.' + (finalDest ? '\n2. Buyer\'s agent files transit bond' + (val('transit_regime') ? ' (' + val('transit_regime') + ')' : '') + '.\n3. Overland to ' + finalDest + (val('corridor') ? ' via ' + val('corridor') : '') + (val('t_inland') ? ' (about ' + val('t_inland') + ' days)' : '') + '.\n4. Import clearance at ' + finalDest + '.' : '\n2. Import clearance and delivery.')],
+  ]), { widths: [95, 115, 300] });
+  para('TRANSFER OF RISK: under FOB, risk passes to the buyer once the container is loaded on board at ' + pol + '. Pre-FOB inland transit is covered by our insurance. The buyer must insure the ocean ' + (finalDest ? 'and overland ' : '') + 'leg' + (finalDest ? 's to ' + finalDest : '') + '.', { size: 9, bold: true, color: GOLD });
+
+  // ---------- 14. Audit checklist ----------
+  H('Mandatory pre-issuance & execution audit checklist');
+  para('Each checkpoint is signed off by its desk before the proforma is released and procurement funds are committed.', { size: 9 });
+  table([['Check', 'Audit item', 'Verification', 'Desk']].concat([
+    ['Mill quality & moisture', 'Lot meets ' + [val('q_moisture') ? 'moisture < ' + val('q_moisture') : '', val('q_broken') ? 'broken < ' + val('q_broken') : ''].filter(Boolean).join(', ') + ' and sortex purity', 'Procurement'],
+    ['Pre-FOB inland insurance', 'Policy bound from mill gate to CFS', 'Finance'],
+    ['Bag strength', c.bags + ' bags undamaged, export weave, double-stitched', 'Packaging'],
+    ['Lorry freight & lead time', 'Rate fixed; dispatch 5-6 days before cut-off', 'Logistics'],
+    ['Heavy container & OWS', 'Booking specifies ' + or('payload', 'heavy-tested box') + '; buyer bears overweight surcharge', 'CHA desk'],
+    ['CHA desk', 'Shipping bill, EDI and examination arranged; CTO / SRF pass-through checked', 'CHA desk'],
+    ['CFS stuffing & free time', 'Empty box from CHA yard; ' + or('free_days', '14') + '-day free time monitored', 'CHA desk'],
+    ['Desiccant', 'Absorb gel hung in container', 'Operations'],
+    ['Fumigation', 'Dosage booked to destination biosecurity norms', 'CHA desk'],
+    ['Destination testing lead time', val('dest_inspection') ? val('dest_inspection') + ' sampler scheduled (48-72 h lab time)' : 'Not required / confirm', 'Quality'],
+    ['Weight tolerance & finality', 'Contract has VGM finality and ' + or('moisture_tol', 'moisture') + ' tolerance', 'Commercial'],
+    ['Transit B/L clause', finalDest ? 'Liner instructed: in transit to ' + finalDest : 'Not a transit shipment', 'Documentation'],
+    ['Payment terms', 'Buyer accepted ' + or('payment_option'), 'Finance'],
+    ['Bank e-BRC / EDPMS closure', 'Bank handling and courier reserve budgeted', 'Treasury'],
+  ].map(x => ['[  ]'].concat(x))), { widths: [40, 140, 240, 90] });
+
+  // ---------- 15. AI research ----------
   if (research) {
     H('Destination research (AI draft: verify before use)');
     if (research.error) {
-      para('Research could not be completed: ' + research.error, { size: 9, color: '#9B1C1C' });
+      para('Research could not be completed: ' + research.error, { size: 9, color: RED });
     } else {
-      para('Prepared by Gemini with Google Search on ' + fmt(new Date()) + '. Figures change often; check duties, rules and prices with the official source or your CHA before quoting. Use them to fill section 7 of the input tab.', { size: 8.5, color: GOLD, bold: true });
+      para('Prepared by Gemini with Google Search on ' + fmt(new Date()) + '. Figures marked "(AI est.)" elsewhere in this dossier come from here. Check duties, rules and prices with the official source or your CHA, and type confirmed figures into the input tab.', { size: 8.5, color: GOLD, bold: true });
       researchToDoc_(body, research.text, GREEN);
       if (research.sources.length) {
         para('Sources', { size: 9, bold: true, color: GREY });
@@ -1364,11 +1610,13 @@ function costingRow_(sheet, row, cfg, inp) {
     }
   }
 
-  H('Approvals');
+  // ---------- 16. Approvals ----------
+  H('Internal operational approvals & clearance to issue');
+  para('Decision recorded: ' + decision.verdict + '. Sign only when every STOP is resolved and each WATCH is cleared.', { size: 9, bold: true, color: vColour });
   const sig = (role, k) => role + '\n' + (val(k) || '') + '\n\nSignature: ____________\nDate: ____ / ____ / ' + year;
   table([
-    ['Costing & pricing verified', 'Logistics & CHA cleared', 'Final commercial sign-off'],
-    [sig('Commercial & procurement', 'appr_costing'), sig('Logistics & compliance', 'appr_logistics'), sig('Director / Managing Partner', 'appr_director')],
+    ['Costing & pricing verified', 'Logistics & CHA clearances', 'Final commercial sign-off'],
+    [sig('Commercial & procurement lead', 'appr_costing'), sig('Logistics & compliance lead', 'appr_logistics'), sig('Director / Managing Partner', 'appr_director')],
   ], { widths: [170, 170, 170] });
   doc.saveAndClose();
 
@@ -1379,15 +1627,16 @@ function costingRow_(sheet, row, cfg, inp) {
   const pdf = folder.createFile(docFile.getAs(MimeType.PDF).setName(costNo + ' INTERNAL.pdf'));
 
   const note = sheet.getRange(row, 11);
-  const stamp = costNo + ': cost ' + usd(c.costUsd / mt) + '/MT, FOB ' + usd(c.fobUsdPerMt) + '/MT (internal)';
+  const stamp = costNo + ' ' + decision.verdict + ': FOB ' + usd(c.fobUsdPerMt) + '/MT, margin ' + marginPct + '% (internal)';
   note.setValue(note.getValue() ? note.getValue() + ' · ' + stamp : stamp);
   return {
-    costNo: costNo, pdfUrl: pdf.getUrl(), calc: c, buyer: B,
-    message: costNo + ' created (internal, not sent to anyone).\n\nNet cost: ' + usd(c.costUsd) + ' (' + usd(c.costUsd / mt) + ' / MT)\nFOB price to quote: ' + usd(c.fobUsdPerMt) + ' / MT  (' + usd(c.fobUsd) + ' total)' +
-      (p.price ? '\nBuyer target: USD ' + p.price + ' / MT' : '') +
-      (B ? '\nBuyer landed cost: ' + usd(B.landedPerMt) + ' / MT' + (B.sell ? ', buyer profit ' + usd(B.profitPerMt) + ' / MT (' + B.roi + '%)' : '') : '') +
-      (research ? (research.error ? '\n\nGemini research failed: ' + research.error : '\n\nGemini destination research added (' + research.sources.length + ' sources).') : '') +
-      '\n\nPDF: ' + pdf.getUrl() + '\nEditable copy: ' + docFile.getUrl() + '\n\nNext: Create quotation PDF will suggest this FOB price.'
+    costNo: costNo, pdfUrl: pdf.getUrl(), calc: c, buyer: B, decision: decision, aiFilled: aiFilled,
+    message: costNo + ' created (internal, not sent to anyone).\n\nDECISION: ' + decision.verdict +
+      decision.rows.filter(r => r[1] !== 'GO').map(r => '\n- ' + r[1] + ': ' + r[0] + '. ' + r[2]).join('') +
+      '\n\nFOB price to quote: ' + usd(c.fobUsdPerMt) + ' / MT  (' + usd(c.fobUsd) + ' total)\nOur net profit: ' + usd(c.marginUsd) +
+      (B ? '\nBuyer landed cost: ' + usd(B.landedPerMt) + ' / MT' + (B.sell ? ', buyer profit ' + usd(B.profitPerMt) + ' / MT (' + B.roi + '%)' : '') + (aiBuyer ? ' (uses AI estimates)' : '') : '') +
+      (research ? (research.error ? '\n\nGemini research failed: ' + research.error : '\n\nGemini research added (' + research.sources.length + ' sources' + (aiFilled.length ? '; filled ' + aiFilled.length + ' empty inputs' : '') + ').') : '') +
+      '\n\nPDF: ' + pdf.getUrl() + '\nEditable copy: ' + docFile.getUrl()
   };
 }
 
@@ -1432,7 +1681,11 @@ function researchPrompt_(p, c, o) {
     '### Risks and notes',
     '- Anything that could stop or delay the shipment, or change the price (for example policy changes, seasonality, currency).',
     '',
-    'If you cannot find a reliable figure, write "Not found, check with CHA / buyer" instead of guessing. Do not invent licences or certifications for Bhumi Varahi Impex. Keep the whole answer under 700 words.'
+    'If you cannot find a reliable figure, write "Not found, check with CHA / buyer" instead of guessing. Do not invent licences or certifications for Bhumi Varahi Impex. Keep the whole answer under 700 words.',
+    '',
+    'At the very end, add a fenced ```json block with your best current figures as plain numbers (null when not found), using exactly these keys:',
+    '{"ocean_freight_usd_per_20ft":null,"carrier_local_usd_per_20ft":null,"dest_port_usd_per_20ft":null,"dest_lolo_usd_per_20ft":null,"inland_trucking_usd_per_20ft":null,"transit_bond_usd_per_20ft":null,"import_duty_pct":null,"other_levies_pct":null,"import_clearing_usd_per_20ft":null,"import_vat_pct":null,"local_currency":null,"local_per_usd":null,"wholesale_local_per_kg_low":null,"wholesale_local_per_kg_high":null,"semi_wholesale_local_per_kg_low":null,"semi_wholesale_local_per_kg_high":null,"retail_local_per_kg_low":null,"retail_local_per_kg_high":null,"dest_standard":null,"dest_moisture_max":null,"dest_broken_max":null,"dest_aflatoxin_max":null}',
+    'Use the import duty that applies today (including any stay of application), and per-container figures for one 20 ft container.'
   ].join('\n');
 }
 
@@ -1457,7 +1710,10 @@ function researchDestination_(p, c, o) {
     const seen = {};
     const sources = (gm.groundingChunks || []).map(g => g.web || {}).filter(w => w.uri && !seen[w.uri] && (seen[w.uri] = 1))
       .map(w => ({ title: String(w.title || w.uri), uri: String(w.uri) })).slice(0, 15);
-    return { text: text, sources: sources, queries: (gm.webSearchQueries || []).slice(0, 10) };
+    let figures = null;
+    const m = text.match(/```json\s*([\s\S]*?)```/);
+    if (m) { try { figures = JSON.parse(m[1]); } catch (e) {} }
+    return { text: text.replace(/```json[\s\S]*?```/, '').trim(), figures: figures, sources: sources, queries: (gm.webSearchQueries || []).slice(0, 10) };
   } catch (err) {
     return { error: String(err).slice(0, 300) };
   }

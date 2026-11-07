@@ -41,7 +41,27 @@ and an email alert goes to info@bhumivarahiimpex.com.
      - approver names
 
      At the bottom are this deal's **cost lines**, copied from Cost Rates, which you can edit for this deal only. **Lo-Lo (lift on / lift off)** is included by default with no rate, so the costing will not run until you enter it, or set Include to N.
-  2. Choose **Bhumi Varahi → Create internal costing**, from the IC tab or the RFQ row. It lists anything still missing. Otherwise it builds the confidential dossier, numbered BV-IC-2026-001 and so on, in the Drive folder **Bhumi Varahi Internal Costing**. The dossier contains:
+  2. Choose **Bhumi Varahi → Create internal costing**, from the IC tab or the RFQ row. It lists anything still missing. Otherwise it builds the **Consignment Decision Dossier**, numbered BV-IC-2026-001 and so on, in the Drive folder **Bhumi Varahi Internal Costing**. It is never emailed.
+     - **Page 1:** a **GO / GO WITH CONDITIONS / NO-GO** verdict, the key numbers, and a scorecard. The scorecard covers our margin against a minimum, the buyer's target price, payment security, registrations, buyer profitability, price against the destination market, a mill price left at its default, destination inspection and pending buyer documents.
+     - **The rest follows the sample dossier:**
+       - executive summary
+       - buyer-view proforma, with scope and turnaround
+       - cost accounting with the partner tariff schedule
+       - market price tiers and duty structure
+       - exporter return with ROCE
+       - buyer landed cost and profit, and the two-party summary
+       - zero-credit payment terms, bank details and protective clauses
+       - KYC and shipment permission register
+       - two-way information matrix
+       - document checklist
+       - our quality standard against the destination standard, and bagging standards
+       - compliance framework
+       - Incoterms matrix
+       - 7-stage roadmap and transfer of risk
+       - 14-point audit
+       - Gemini research
+       - approvals
+     - **AI figures:** with Gemini on, empty buyer-side, market and destination-standard inputs are filled from its research and marked **(AI est.)**. Values you type always win. Minimum margin and minimum buyer return for GO are set in Cost Settings.
      - shipment summary and quality table
      - cost build-up in INR and USD with GST, margin and the FOB price
      - exporter net return
