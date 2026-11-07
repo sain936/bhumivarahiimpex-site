@@ -24,6 +24,7 @@ T = {
    label_o=['Plain / neutral bags', 'Our own brand (private label)', 'Bhumi Varahi brand', 'Not decided yet'],
    shipment_o=['Within 30 days', 'In 1–2 months', 'In 3 months or later', 'Regular monthly contract'],
    payment_o=['LC at sight', 'TT advance + balance against documents', 'CAD (cash against documents)', 'To be discussed'],
+   price='Target price (USD per MT)', ph_price='e.g. 950', sample='Sample needed?', sample_o=['Yes, please send a sample', 'No'],
  ),
  'ar': dict(
    optional='(اختياري)', sel_country='اختر الدولة…', sel_port='اختر الميناء…', port_first='اختر الدولة أولاً',
@@ -43,6 +44,7 @@ T = {
    label_o=['أكياس محايدة بدون علامة', 'علامتنا التجارية الخاصة', 'علامة بومي فاراهي', 'لم يتحدد بعد'],
    shipment_o=['خلال 30 يوماً', 'خلال شهر إلى شهرين', 'بعد 3 أشهر أو أكثر', 'عقد شهري منتظم'],
    payment_o=['اعتماد مستندي بالاطلاع', 'دفعة مقدمة بالتحويل والباقي مقابل المستندات', 'الدفع مقابل المستندات (CAD)', 'للنقاش'],
+   price='السعر المستهدف (دولار للطن)', ph_price='مثال: 950', sample='هل تحتاجون عينة؟', sample_o=['نعم، أرسلوا عينة', 'لا'],
  ),
  'fr': dict(
    optional='(facultatif)', sel_country='Choisir un pays…', sel_port='Choisir un port…', port_first='Choisissez d’abord le pays',
@@ -62,6 +64,7 @@ T = {
    label_o=['Sacs neutres', 'Notre propre marque', 'Marque Bhumi Varahi', 'Pas encore décidé'],
    shipment_o=['Sous 30 jours', 'Dans 1 à 2 mois', 'Dans 3 mois ou plus', 'Contrat mensuel régulier'],
    payment_o=['Crédit documentaire à vue', 'Acompte par virement + solde contre documents', 'CAD (paiement contre documents)', 'À discuter'],
+   price='Prix cible (USD par tonne)', ph_price='ex. 950', sample='Besoin d’un échantillon ?', sample_o=['Oui, envoyez un échantillon', 'Non'],
  ),
 }
 # Values stored in the sheet are always English, whatever the page language.
@@ -91,10 +94,11 @@ def render(lang, product_groups, group_names, lab):
         r = '' if opt else ' required'
         return f'<div>{L(id_, key, opt)}<input type="{typ}" id="{id_}" name="{name}"{r}{a}{d}{extra} placeholder="{e(ph)}" class="{INP}" /></div>'
 
-    def select(id_, name, key, opts_key):
-        o = f'<option value="" disabled selected>{e(t["choose"])}</option>' + ''.join(
+    def select(id_, name, key, opts_key, opt=False):
+        o = f'<option value=""{"" if opt else " disabled"} selected>{e(t["choose"])}</option>' + ''.join(
             f'<option value="{e(v)}">{e(lbl)}</option>' for v, lbl in zip(EN[opts_key], t[opts_key]))
-        return f'<div>{L(id_, key)}<select id="{id_}" name="{name}" required class="{SEL}">{o}</select></div>'
+        r = '' if opt else ' required'
+        return f'<div>{L(id_, key, opt)}<select id="{id_}" name="{name}"{r} class="{SEL}">{o}</select></div>'
 
     prod = f'<option value="" disabled selected>{e(t["choose_prod"])}</option>' + ''.join(
         f'<optgroup label="{e(g)}">' + ''.join(f'<option value="{e(p["name"])}">{e(p["name"])}</option>' for p in items) + '</optgroup>'
@@ -126,6 +130,8 @@ def render(lang, product_groups, group_names, lab):
         select('bagLabel', 'label', 'label', 'label_o'),
         select('shipment', 'shipment', 'shipment', 'shipment_o'),
         select('payment', 'payment', 'payment', 'payment_o'),
+        text('targetPrice', 'price', 'price', t['ph_price'], opt=True, extra=' inputmode="decimal" maxlength="40" dir="ltr"'),
+        select('sample', 'sample', 'sample', 'sample_o', opt=True),
     ]
     notes = f'<div>{L("rfqNotes", "notes")}<textarea id="rfqNotes" name="notes" rows="3" required placeholder="{e(t["ph_notes"])}" class="{INP}"></textarea></div>'
     return ('<div class="grid grid-cols-1 sm:grid-cols-2 gap-5">\n            ' + '\n            '.join(fields) +

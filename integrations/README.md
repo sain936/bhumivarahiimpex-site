@@ -21,7 +21,7 @@ and an email alert goes to info@bhumivarahiimpex.com.
 
 ## Using the sheet
 
-- Columns L to S hold the extra form answers: Contact person, Grade / type, Destination port, Incoterm, Packing, Bag branding, Shipment and Payment terms. Older sheets get these columns added automatically.
+- Columns L to U hold the extra form answers: Contact person, Grade / type, Destination port, Incoterm, Packing, Bag branding, Shipment, Payment terms, Target price (USD/MT) and Sample needed (the last two are optional on the form). Older sheets get these columns added automatically.
 - Column B, **RFQ No.**, holds the reference sent to the buyer (for example BV-261108-003000). Copy it into "Your RFQ ref." on the quotation template. Sheets made before this column existed get it added the next time an RFQ arrives or any automation runs, and their old "Ref:" notes move into it.
 - Each row has a **Status** dropdown: New, Contacted, Quoted, Won, Lost.
 - Use the **Notes (internal)** column for follow-up notes.

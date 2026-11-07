@@ -12,9 +12,9 @@ const NOTIFY_EMAIL = 'info@bhumivarahiimpex.com';
 const HEADERS = ['Received', 'RFQ No.', 'Company / Buyer', 'Email', 'Phone / WhatsApp', 'Country',
                  'Commodity', 'Quantity', 'Specs & notes', 'Status', 'Notes (internal)',
                  'Contact person', 'Grade / type', 'Destination port', 'Incoterm', 'Packing', 'Bag branding',
-                 'Shipment', 'Payment terms'];
-// Form fields stored in columns 12-19, in this order (added Nov 2026).
-const EXTRA_FIELDS = ['contact', 'grade', 'port', 'incoterm', 'packing', 'label', 'shipment', 'payment'];
+                 'Shipment', 'Payment terms', 'Target price (USD/MT)', 'Sample needed'];
+// Form fields stored in columns 12-21, in this order (added Nov 2026).
+const EXTRA_FIELDS = ['contact', 'grade', 'port', 'incoterm', 'packing', 'label', 'shipment', 'payment', 'price', 'sample'];
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
@@ -123,6 +123,7 @@ function notify_(p) {
       ${row('Contact person', p.contact)}${row('Country', p.country)}${row('Destination port', p.port)}
       ${row('Commodity', p.commodity)}${row('Grade / type', p.grade)}${row('Quantity', p.quantity)}${row('Incoterm', p.incoterm)}
       ${row('Packing', p.packing)}${row('Bag branding', p.label)}${row('Shipment', p.shipment)}${row('Payment terms', p.payment)}
+      ${row('Target price (USD/MT)', p.price)}${row('Sample needed', p.sample)}
       ${row('Specs & notes', p.notes)}
     </table>
     <div style="background:#0E2820;color:#cbd5e1;padding:10px 18px;font-size:12px;">Reply to this email to answer the buyer directly. Saved in the RFQs sheet.</div>
@@ -154,7 +155,7 @@ function acknowledge_(p) {
       <div style="background:#F8F5EC;border-left:3px solid #C9A227;border-radius:4px;padding:8px 4px;margin:0 0 18px;">
         <div style="padding:4px 12px;font-size:12px;letter-spacing:1px;color:#8A6508;font-weight:bold;">YOUR REQUEST</div>
         <table style="border-collapse:collapse;font-size:14px;">
-          ${row('RFQ No.', p.ref)}${row('Company', p.name)}${row('Email / Phone', [p.email, p.phone].filter(Boolean).join('  |  '))}${row('Contact person', p.contact)}${row('Commodity', p.commodity)}${row('Grade / type', p.grade)}${row('Quantity', p.quantity)}${row('Destination', [p.port, p.country].filter(Boolean).join(', '))}${row('Incoterm', p.incoterm)}${row('Packing', p.packing)}${row('Bag branding', p.label)}${row('Shipment', p.shipment)}${row('Payment terms', p.payment)}${row('Other specifications', p.notes)}
+          ${row('RFQ No.', p.ref)}${row('Company', p.name)}${row('Email / Phone', [p.email, p.phone].filter(Boolean).join('  |  '))}${row('Contact person', p.contact)}${row('Commodity', p.commodity)}${row('Grade / type', p.grade)}${row('Quantity', p.quantity)}${row('Destination', [p.port, p.country].filter(Boolean).join(', '))}${row('Incoterm', p.incoterm)}${row('Packing', p.packing)}${row('Bag branding', p.label)}${row('Shipment', p.shipment)}${row('Payment terms', p.payment)}${p.price ? row('Target price (USD/MT)', p.price) : ''}${p.sample ? row('Sample', p.sample) : ''}${row('Other specifications', p.notes)}
         </table>
       </div>
       <p style="margin:0 0 14px;font-size:13px;color:#5A6A72;">Please quote your RFQ No. <strong style="color:#1B4D3E;">${esc(p.ref)}</strong> in any reply, and you will find it on our quotation.</p>
