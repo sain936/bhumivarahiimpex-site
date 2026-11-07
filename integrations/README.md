@@ -24,6 +24,7 @@ and an email alert goes to info@bhumivarahiimpex.com.
 - Column B, **RFQ No.**, holds the reference sent to the buyer (for example BV-261108-003000). Copy it into "Your RFQ ref." on the quotation template. Sheets made before this column existed get it added the next time an RFQ arrives or any automation runs, and their old "Ref:" notes move into it.
 - Each row has a **Status** dropdown: New, Contacted, Quoted, Won, Lost.
 - Use the **Notes (internal)** column for follow-up notes.
+- **Resend a buyer email:** click any cell in the RFQ row, then use the **Bhumi Varahi → Resend buyer email (selected row)** menu at the top of the sheet. It asks before sending and notes the resend in the Notes column. The menu appears after you reload the sheet once the new script is saved.
 - Reply to the alert email to answer the buyer directly.
 - The buyer automatically gets a branded "we are working on your quotation" email (replies come back to info@).
 

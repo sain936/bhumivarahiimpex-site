@@ -441,3 +441,43 @@ function sendMonthlyReport() {
 }
 
 function isDate_(v) { return Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime()); }
+
+// ===== RESEND BUYER EMAIL =====
+// Adds a "Bhumi Varahi" menu to the sheet. Click any cell in an RFQ row, then
+// Bhumi Varahi -> Resend buyer email, to send the acknowledgement again
+// (for example after the buyer says it went to spam, or after correcting their email address).
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu('Bhumi Varahi')
+    .addItem('Resend buyer email (selected row)', 'resendAcknowledgement')
+    .addItem('Send today\'s follow-ups now', 'dailyDigest')
+    .addToUi();
+}
+
+function resendAcknowledgement() {
+  const ui = SpreadsheetApp.getUi();
+  const sheet = SpreadsheetApp.getActiveSheet();
+  if (sheet.getName() !== SHEET_NAME) { ui.alert('Open the "' + SHEET_NAME + '" tab and click a cell in the RFQ row first.'); return; }
+  const row = sheet.getActiveRange().getRow();
+  if (row < 2) { ui.alert('Click a cell in an RFQ row (not the header) first.'); return; }
+  const result = resendRow_(sheet, row, function (msg) { return ui.alert('Resend buyer email', msg, ui.ButtonSet.YES_NO) === ui.Button.YES; });
+  ui.alert(result);
+}
+
+// Shared by the menu (and tests). confirm(msg) returns true to go ahead.
+function resendRow_(sheet, row, confirm) {
+  migrateRfqNo_(sheet);
+  const r = sheet.getRange(row, 1, 1, HEADERS.length).getValues()[0];
+  const p = { ref: String(r[1] || ''), name: r[2], email: String(r[3] || '').trim(), phone: r[4], country: r[5],
+              commodity: r[6], quantity: r[7], notes: r[8] };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email)) return 'Row ' + row + ' has no valid buyer email. Fix the Email column and try again.';
+  if (!p.ref) {
+    p.ref = 'BV-' + Utilities.formatDate(isDate_(r[0]) ? r[0] : new Date(), 'Asia/Kolkata', 'yyMMdd-HHmmss');
+    sheet.getRange(row, 2).setValue(p.ref);
+  }
+  if (confirm && !confirm('Send the acknowledgement for ' + p.ref + ' again to ' + p.email + '?')) return 'Cancelled. Nothing was sent.';
+  acknowledge_(p);
+  const note = sheet.getRange(row, 11);
+  const stamp = 'Buyer email resent ' + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd MMM HH:mm');
+  note.setValue(note.getValue() ? note.getValue() + ' · ' + stamp : stamp);
+  return 'Sent to ' + p.email + ' (' + p.ref + '). Ask the buyer to check spam and mark it "Not spam" if it lands there.';
+}

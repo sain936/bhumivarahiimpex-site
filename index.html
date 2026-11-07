@@ -786,7 +786,10 @@
           </div>
           <div>
             <label for="phone" class="block text-xs font-bold uppercase tracking-wider text-emerald-200 mb-2">Phone / WhatsApp (optional)</label>
-            <input type="tel" id="phone" name="phone" autocomplete="tel" placeholder="+971 50 123 4567" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-emerald-200/50 focus:outline-none focus:border-brand-warmGold text-sm" />
+            <div class="flex gap-2">
+              <select id="dialcode" data-dialcodes aria-label="Country calling code" class="w-[7.5rem] shrink-0 px-2 py-3 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:border-brand-warmGold text-sm [&>optgroup]:text-slate-900 [&_option]:text-slate-900"></select>
+              <input type="tel" id="phone" name="phone" autocomplete="tel-national" inputmode="tel" placeholder="50 123 4567" class="min-w-0 flex-1 px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-emerald-200/50 focus:outline-none focus:border-brand-warmGold text-sm" />
+            </div>
           </div>
         </div>
 
@@ -1082,5 +1085,6 @@
       }
     });
   </script>
+  <script src="/js/dialcodes.js" defer></script>
 </body>
 </html>
