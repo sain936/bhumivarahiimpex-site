@@ -141,11 +141,9 @@ def page(code,t,L,groups,SHEETS_URL,CAT):
       <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-5 gap-10 items-start">
         <div class="lg:col-span-2 space-y-4">{kick(t['k_rfq'],True)}<h2 class="hfont text-3xl sm:text-4xl font-bold">{e(t['form_h'])}</h2><p class="text-emerald-100 leading-relaxed">{e(t['form_sub'])}</p>
           <ul class="space-y-3 pt-4 text-sm text-emerald-100">{''.join(f'<li class="flex gap-3"><span class="text-brand-warmGold font-bold">✓</span>{e(a)}</li>' for a,_ in t['why'])}</ul></div>
-        <form id="rfqForm" class="lg:col-span-3 glass-card rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl">
+        <form id="rfqForm" data-endpoint="{SHEETS_URL}" data-lang="{code}" data-tag="{t['tag']}" class="lg:col-span-3 glass-card rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl">
           <input type="checkbox" name="botcheck" class="hidden" tabindex="-1" autocomplete="off" />
           {rfqfields.render(code, groups, t['groups'], lab)}
-          <button type="submit" id="rfqSubmit" class="w-full disabled:opacity-60 py-4 bg-brand-warmGold hover:bg-yellow-500 text-slate-950 font-bold rounded-xl text-base shadow-lg">{e(t['submit'])}</button>
-          <div id="formMsg" role="status" aria-live="polite" class="hidden"></div>
         </form>
       </div>
     </section>
@@ -168,29 +166,8 @@ def page(code,t,L,groups,SHEETS_URL,CAT):
     </div>
     <a href="{wa}" class="wa-float" target="_blank" rel="noopener" aria-label="WhatsApp">{WAICON}</a>
   </footer>
-  <script>
-    const SHEETS_URL = '{SHEETS_URL}';
-    const f = document.getElementById('rfqForm'), btn = document.getElementById('rfqSubmit'), msg = document.getElementById('formMsg');
-    const show = (ok, t, b) => {{ msg.className = 'rounded-xl p-4 text-sm ' + (ok ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900'); msg.innerHTML = ''; const s = document.createElement('strong'); s.textContent = t; msg.append(s, document.createElement('br'), b); }};
-    f.addEventListener('submit', async (ev) => {{
-      ev.preventDefault();
-      const data = new FormData(f);
-      if (data.get('botcheck')) return;
-      data.set('notes', '[{t['tag']}] ' + (data.get('notes') || ''));
-      btn.disabled = true; btn.textContent = {json.dumps(t['sending'],ensure_ascii=False)};
-      try {{
-        await fetch(SHEETS_URL, {{ method: 'POST', mode: 'no-cors', body: new URLSearchParams(data) }});
-        if (window.gtag) gtag('event', 'generate_lead', {{ commodity: data.get('commodity'), method: 'rfq_form_{code}' }});
-        show(true, {json.dumps(t['ok_t'],ensure_ascii=False)}, {json.dumps(t['ok_b'],ensure_ascii=False)});
-        f.reset();
-      }} catch (err) {{
-        show(false, {json.dumps(t['err_t'],ensure_ascii=False)}, {json.dumps(t['err_b'],ensure_ascii=False)});
-      }} finally {{
-        btn.disabled = false; btn.textContent = {json.dumps(t['submit'],ensure_ascii=False)};
-      }}
-    }});
-  </script>
-  <script src="/js/dialcodes.js?v=5" defer></script>
+  <script src="/js/dialcodes.js?v=6" defer></script>
+  <script src="/js/rfqform.js?v=1" defer></script>
 </body>
 </html>
 '''

@@ -24,7 +24,9 @@ function doPost(e) {
     if (p.botcheck) return json_({ success: true }); // spam trap filled in
 
     const sheet = getSheet_();
-    p.ref = 'BV-' + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyMMdd-HHmmss');
+    // The website makes the RFQ No. so the buyer sees it on screen at once; otherwise make one here.
+    p.ref = /^BV-\d{6}-\d{6}$/.test(String(p.ref || '')) ? String(p.ref)
+      : 'BV-' + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyMMdd-HHmmss');
     const clean = v => {
       v = String(v || '').trim().slice(0, 2000);
       return /^[=+\-@]/.test(v) ? "'" + v : v; // stop formula injection
@@ -44,7 +46,7 @@ function doPost(e) {
       const cell = sheet.getRange(dup.row, 11);
       const extra = String(p.notes || '').trim() && String(p.notes).trim() !== String(dup.notes).trim()
         ? ' (new details: ' + clean(p.notes).slice(0, 300) + ')' : '';
-      cell.setValue(cell.getValue() + ' · Resubmitted ' + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd MMM HH:mm') + extra);
+      cell.setValue(cell.getValue() + ' · Resubmitted ' + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd MMM HH:mm') + ' as ' + p.ref + extra);
       return json_({ success: true });
     }
 
@@ -189,6 +191,7 @@ function sendMail_(o) {
   const opts = { name: o.name || 'Bhumi Varahi Impex' };
   if (o.htmlBody) opts.htmlBody = o.htmlBody;
   if (o.replyTo) opts.replyTo = o.replyTo;
+  if (o.attachments) opts.attachments = o.attachments;
   try {
     GmailApp.sendEmail(o.to, o.subject, text, opts);
   } catch (err) {
@@ -488,6 +491,7 @@ function isDate_(v) { return Object.prototype.toString.call(v) === '[object Date
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Bhumi Varahi')
     .addItem('Resend buyer email (selected row)', 'resendAcknowledgement')
+    .addItem('Create quotation PDF (selected row)', 'createQuotation')
     .addItem('Send today\'s follow-ups now', 'dailyDigest')
     .addToUi();
 }
@@ -520,4 +524,171 @@ function resendRow_(sheet, row, confirm) {
   const stamp = 'Buyer email resent ' + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd MMM HH:mm');
   note.setValue(note.getValue() ? note.getValue() + ' · ' + stamp : stamp);
   return 'Sent to ' + p.email + ' (' + p.ref + '). Ask the buyer to check spam and mark it "Not spam" if it lands there.';
+}
+
+// ===== QUOTATION PDF =====
+// Click a cell in an RFQ row, then Bhumi Varahi -> Create quotation PDF.
+// Enter the price in USD per MT. The script makes a quotation (Google Doc + PDF) in the
+// Drive folder "Bhumi Varahi Quotations", can email the PDF to the buyer, and marks the row Quoted.
+const QUOTE_FOLDER = 'Bhumi Varahi Quotations';
+const QUOTE_VALID_DAYS = 7;
+
+function createQuotation() {
+  const ui = SpreadsheetApp.getUi();
+  const sheet = SpreadsheetApp.getActiveSheet();
+  if (sheet.getName() !== SHEET_NAME) { ui.alert('Open the "' + SHEET_NAME + '" tab and click a cell in the RFQ row first.'); return; }
+  const row = sheet.getActiveRange().getRow();
+  if (row < 2) { ui.alert('Click a cell in an RFQ row (not the header) first.'); return; }
+  const ans = ui.prompt('Create quotation', 'Price in USD per MT (for example 1150):', ui.ButtonSet.OK_CANCEL);
+  if (ans.getSelectedButton() !== ui.Button.OK) return;
+  const price = parseFloat(String(ans.getResponseText()).replace(/[^0-9.]/g, ''));
+  if (!(price > 0)) { ui.alert('Please enter a price such as 1150.'); return; }
+  const send = ui.alert('Create quotation', 'Email the PDF to the buyer now?\n\nYes: create and email it.\nNo: only create it in Drive, so you can check it first.', ui.ButtonSet.YES_NO) === ui.Button.YES;
+  ui.alert(quoteRow_(sheet, row, price, send).message);
+}
+
+function nextQuoteNo_() {
+  const props = PropertiesService.getScriptProperties();
+  const year = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy');
+  const n = Number(props.getProperty('quoteSeq_' + year) || 0) + 1;
+  props.setProperty('quoteSeq_' + year, String(n));
+  return 'BV-Q-' + year + '-' + ('00' + n).slice(-3);
+}
+
+// First number in "50 MT", "2 x 25 MT", "100 tons" etc. Returns null when it is not in MT/tons.
+function quantityMt_(q) {
+  q = String(q || '').replace(/,/g, '');
+  const m = q.match(/(\d+(?:\.\d+)?)\s*(mt|metric|ton|tonne|t\b)?/i);
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  if (/fcl|container|kg\b/i.test(q) && !m[2]) return null;
+  return n > 0 ? n : null;
+}
+
+function quoteFolder_() {
+  const it = DriveApp.getFoldersByName(QUOTE_FOLDER);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(QUOTE_FOLDER);
+}
+
+// Shared by the menu (and tests). Returns { message, quoteNo, pdfUrl }.
+function quoteRow_(sheet, row, price, send) {
+  migrateRfqNo_(sheet);
+  const r = sheet.getRange(row, 1, 1, HEADERS.length).getValues()[0];
+  const p = { ref: String(r[1] || ''), name: String(r[2] || ''), email: String(r[3] || '').trim(), phone: String(r[4] || ''),
+              country: String(r[5] || ''), commodity: String(r[6] || ''), quantity: String(r[7] || ''), notes: String(r[8] || '') };
+  EXTRA_FIELDS.forEach((k, i) => { p[k] = String(r[11 + i] || ''); });
+  if (!p.ref) {
+    p.ref = 'BV-' + Utilities.formatDate(isDate_(r[0]) ? r[0] : new Date(), 'Asia/Kolkata', 'yyMMdd-HHmmss');
+    sheet.getRange(row, 2).setValue(p.ref);
+  }
+  const okEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email);
+  if (send && !okEmail) return { message: 'Row ' + row + ' has no valid buyer email. Fix the Email column, or choose No to only create the PDF.' };
+
+  const quoteNo = nextQuoteNo_();
+  const today = new Date();
+  const fmt = d => Utilities.formatDate(d, 'Asia/Kolkata', 'dd MMM yyyy');
+  const valid = new Date(today.getTime() + QUOTE_VALID_DAYS * 864e5);
+  const mt = quantityMt_(p.quantity);
+  const money = n => 'USD ' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const dest = [p.port, p.country].filter(Boolean).join(', ');
+  const term = (String(p.incoterm).match(/^(FOB|CFR|CIF|FCA|EXW|CPT|CIP|DAP|DDP)\b/i) || [])[1];
+  const basis = term ? term.toUpperCase() + ' ' + (/^(FOB|FCA|EXW)$/i.test(term) ? 'Indian port' : (p.port || p.country)) : '';
+
+  const doc = DocumentApp.create(quoteNo + ' ' + (p.name || 'Buyer'));
+  const body = doc.getBody();
+  body.setMarginTop(36).setMarginBottom(36).setMarginLeft(48).setMarginRight(48);
+  const GREEN = '#1B4D3E', GOLD = '#8A6508', GREY = '#5A6A72';
+  try {
+    const logo = UrlFetchApp.fetch('https://www.bhumivarahiimpex.com/brand/email-logo.png').getBlob();
+    const img = body.getParagraphs()[0].appendInlineImage(logo);
+    const h = 44; img.setWidth(Math.round(img.getWidth() * h / img.getHeight())).setHeight(h);
+  } catch (e) { body.getParagraphs()[0].appendText('BHUMI VARAHI IMPEX PVT LTD').setBold(true).setForegroundColor(GREEN).setFontSize(16); }
+  body.appendParagraph('Bhumi Varahi Impex Pvt Ltd  |  ' + NOTIFY_EMAIL + '  |  WhatsApp +91 94929 92666  |  www.bhumivarahiimpex.com')
+    .setFontSize(8).setForegroundColor(GREY);
+  body.appendHorizontalRule();
+  body.appendParagraph('QUOTATION').setHeading(DocumentApp.ParagraphHeading.HEADING1)
+    .editAsText().setForegroundColor(GREEN).setBold(true).setFontSize(20);
+
+  const style = (t, widths) => {
+    t.setBorderColor('#D6DDE0');
+    for (let i = 0; i < t.getNumRows(); i++) for (let j = 0; j < t.getRow(i).getNumCells(); j++) {
+      const c = t.getCell(i, j); c.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(6).setPaddingRight(6);
+      c.editAsText().setFontSize(9.5);
+      if (widths && widths[j]) c.setWidth(widths[j]);
+    }
+    return t;
+  };
+  const info = style(body.appendTable([
+    ['Quotation No.', quoteNo, 'Date', fmt(today)],
+    ['Your RFQ No.', p.ref, 'Valid until', fmt(valid)],
+  ]), [90, 150, 70, 150]);
+  [0, 2].forEach(j => { for (let i = 0; i < 2; i++) info.getCell(i, j).editAsText().setForegroundColor(GREY); });
+  [1, 3].forEach(j => { for (let i = 0; i < 2; i++) info.getCell(i, j).editAsText().setBold(true); });
+
+  body.appendParagraph('TO').editAsText().setFontSize(9).setBold(true).setForegroundColor(GOLD);
+  body.appendParagraph([p.name, p.contact ? 'Attn: ' + p.contact : '', [p.email, p.phone].filter(Boolean).join('  |  '), p.country]
+    .filter(Boolean).join('\n')).editAsText().setFontSize(10).setBold(false).setForegroundColor('#1e293b');
+
+  body.appendParagraph('PRODUCT AND PRICE').editAsText().setFontSize(9).setBold(true).setForegroundColor(GOLD);
+  const prod = [p.commodity, p.grade].filter(Boolean).join(', ') + (p.notes && p.notes !== 'None' ? '\nSpecifications: ' + p.notes.replace(/^\[(AR|FR)\]\s*/, '') : '');
+  const amount = mt ? money(mt * price) : 'On confirmed quantity';
+  const pt = style(body.appendTable([
+    ['Product', 'Quantity', 'Price (USD/MT, ' + (basis || 'basis on request') + ')', 'Amount'],
+    [prod || '-', p.quantity || '-', money(price), amount],
+  ]), [210, 80, 110, 80]);
+  for (let j = 0; j < 4; j++) { const c = pt.getCell(0, j); c.setBackgroundColor(GREEN); c.editAsText().setBold(true).setForegroundColor('#FFFFFF'); }
+  pt.getCell(1, 3).editAsText().setBold(true);
+
+  body.appendParagraph('TERMS').editAsText().setFontSize(9).setBold(true).setForegroundColor(GOLD);
+  const terms = [
+    ['Delivery terms', [p.incoterm, dest].filter(Boolean).join(', ') || 'To be agreed'],
+    ['Payment', p.payment || 'To be agreed'],
+    ['Shipment', p.shipment || 'To be agreed'],
+    ['Packing', p.packing || 'To be agreed'],
+    ['Bag branding', p.label || 'To be agreed'],
+    ['Validity', 'This quotation is valid until ' + fmt(valid) + '. Prices may change after that date with market and freight rates.'],
+    ['Bank details', 'Bank details will be shared on the proforma invoice.'],
+  ];
+  if (p.sample && !/^no/i.test(p.sample)) terms.splice(5, 0, ['Sample', p.sample]);
+  const tt = style(body.appendTable(terms), [110, 370]);
+  for (let i = 0; i < terms.length; i++) tt.getCell(i, 0).editAsText().setForegroundColor(GREY);
+
+  body.appendParagraph('Please quote ' + quoteNo + ' and your RFQ No. ' + p.ref + ' when you confirm the order.')
+    .editAsText().setFontSize(9.5).setForegroundColor(GREY).setBold(false);
+  body.appendParagraph('For Bhumi Varahi Impex Pvt Ltd\n\n\nAuthorised Signatory\nExport Desk')
+    .editAsText().setFontSize(10).setForegroundColor('#1e293b').setBold(false);
+  doc.saveAndClose();
+
+  const folder = quoteFolder_();
+  const docFile = DriveApp.getFileById(doc.getId());
+  docFile.moveTo(folder);
+  const pdf = folder.createFile(docFile.getAs(MimeType.PDF).setName(quoteNo + '.pdf'));
+
+  let sent = false;
+  if (send) {
+    const esc = s => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const who = esc(p.contact || p.name || 'Sir / Madam');
+    sendMail_({
+      to: p.email, replyTo: NOTIFY_EMAIL, name: 'Bhumi Varahi Impex',
+      subject: 'Quotation ' + quoteNo + ' for your RFQ ' + p.ref + ': ' + (p.commodity || 'your request') + ' | Bhumi Varahi Impex',
+      htmlBody: '<div style="font-family:Arial,sans-serif;max-width:600px;color:#334155;font-size:15px;line-height:1.6;">' +
+        '<p>Dear ' + who + ',</p><p>Thank you for your request. Please find attached our quotation <strong>' + esc(quoteNo) +
+        '</strong> for your RFQ <strong>' + esc(p.ref) + '</strong> (' + esc(p.commodity) + ', ' + esc(p.quantity) + ').</p>' +
+        '<p>Price: <strong>' + esc(money(price)) + ' per MT</strong>' + (basis ? ', ' + esc(basis) : '') + '. Valid until ' + esc(fmt(valid)) + '.</p>' +
+        '<p>To confirm, or if you would like any changes, simply reply to this email or message us on WhatsApp at +91 94929 92666.</p>' +
+        '<p>Warm regards,<br><strong style="color:#1B4D3E;">Export Desk</strong><br>Bhumi Varahi Impex Pvt Ltd<br>' + NOTIFY_EMAIL + ' | www.bhumivarahiimpex.com</p></div>',
+      attachments: [pdf.getBlob()]
+    });
+    sent = true;
+  }
+
+  if (sent) sheet.getRange(row, 10).setValue('Quoted');
+  const note = sheet.getRange(row, 11);
+  const stamp = quoteNo + ' at ' + money(price) + '/MT ' + (sent ? 'emailed ' : 'created ') + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd MMM HH:mm');
+  note.setValue(note.getValue() ? note.getValue() + ' · ' + stamp : stamp);
+  return {
+    quoteNo: quoteNo, pdfUrl: pdf.getUrl(),
+    message: quoteNo + (sent ? ' was emailed to ' + p.email + '.' : ' was created. It was not emailed.') +
+      '\n\nPDF: ' + pdf.getUrl() + '\nEditable copy: ' + docFile.getUrl() + '\n\nBoth are in the Drive folder "' + QUOTE_FOLDER + '".'
+  };
 }

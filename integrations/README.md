@@ -26,6 +26,8 @@ and an email alert goes to info@bhumivarahiimpex.com.
 - Each row has a **Status** dropdown: New, Contacted, Quoted, Won, Lost.
 - Use the **Notes (internal)** column for follow-up notes.
 - **Resend a buyer email:** click any cell in the RFQ row, then use the **Bhumi Varahi → Resend buyer email (selected row)** menu at the top of the sheet. It asks before sending and notes the resend in the Notes column. The menu appears after you reload the sheet once the new script is saved.
+- **RFQ No. from the website:** the form now makes the RFQ No. (BV-yyMMdd-HHmmss, India time) and shows it to the buyer on screen straight away, with a copy button and an "Also send on WhatsApp" button that fills in the RFQ details. The script keeps that number in column B, so the screen, the sheet, the emails and WhatsApp all show the same one.
+- **Create a quotation PDF:** click any cell in the RFQ row, then **Bhumi Varahi → Create quotation PDF (selected row)**. Type your price in USD per MT. Choose **Yes** to email the PDF to the buyer straight away, or **No** to only create it so you can check it first. The quotation gets its own number (BV-Q-2026-001, 002 and so on), shows the buyer's RFQ No., the amount when the quantity is in MT, the Incoterm, payment, shipment, packing and branding terms, and is valid for 7 days. A PDF and an editable Google Doc are saved in the Drive folder **Bhumi Varahi Quotations**. Emailed quotations set Status to **Quoted**, and every quotation is noted in the Notes column. The first time, Google asks you to allow Docs and Drive access.
 - Reply to the alert email to answer the buyer directly.
 - The buyer automatically gets a branded "we are working on your quotation" email (replies come back to info@).
 

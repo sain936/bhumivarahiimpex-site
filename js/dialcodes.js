@@ -230,6 +230,7 @@
     document.addEventListener('click', function (e) { if (!wrap.contains(e.target)) close(false); });
     sel.addEventListener('invalid', function () { btn.classList.add('dp-invalid'); setTimeout(function () { btn.focus(); }, 0); });
     sel.addEventListener('focus', function () { btn.focus(); });
+    sel.addEventListener('change', paint);
     paint();
     return { paint: paint, close: close };
   }

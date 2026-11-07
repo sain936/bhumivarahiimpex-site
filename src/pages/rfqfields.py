@@ -116,23 +116,80 @@ def render(lang, product_groups, group_names, lab):
             f'<select id="port" name="port" required data-port-picker data-ph="{e(t["sel_port"])}" data-first="{e(t["port_first"])}" data-other="{e(t["other_port"])}" data-search="{e(t["search_port"])}" data-none="{e(dz["none"])}" class="{SEL}">'
             f'<option value="" disabled selected>{e(t["port_first"])}</option></select></div>'
             f'<input type="text" name="port_other" hidden maxlength="80" placeholder="{e(t["ph_port_other"])}" aria-label="{e(t["ph_port_other"])}" class="mt-2 {INP}" /></div>')
-    fields = [
-        text('buyerName', 'name', 'name', t['ph_name'], ac='organization'),
-        text('contactPerson', 'contact', 'contact', t['ph_contact'], ac='name'),
-        text('buyerEmail', 'email', 'email', 'procurement@buyer.com', typ='email', ac='email'),
-        phone,
-        f'<div>{L("commoditySelect", "comm")}<select id="commoditySelect" name="commodity" required class="{SEL}"{ltr}>{prod}</select></div>',
-        text('grade', 'grade', 'grade', t['ph_grade'], opt=True),
-        text('quantity', 'quantity', 'qty', t['ph_qty']),
-        country, port,
-        select('incoterm', 'incoterm', 'incoterm', 'incoterm_o'),
-        select('packing', 'packing', 'packing', 'packing_o'),
-        select('bagLabel', 'label', 'label', 'label_o'),
-        select('shipment', 'shipment', 'shipment', 'shipment_o'),
-        select('payment', 'payment', 'payment', 'payment_o'),
-        text('targetPrice', 'price', 'price', t['ph_price'], opt=True, extra=' inputmode="decimal" maxlength="40" dir="ltr"'),
-        select('sample', 'sample', 'sample', 'sample_o', opt=True),
-    ]
+    G = lambda *xs: '<div class="grid grid-cols-1 sm:grid-cols-2 gap-5">' + ''.join(xs) + '</div>'
     notes = f'<div>{L("rfqNotes", "notes")}<textarea id="rfqNotes" name="notes" rows="3" required placeholder="{e(t["ph_notes"])}" class="{INP}"></textarea></div>'
-    return ('<div class="grid grid-cols-1 sm:grid-cols-2 gap-5">\n            ' + '\n            '.join(fields) +
-            '\n          </div>\n          ' + notes)
+    steps = [
+        G(text('buyerName', 'name', 'name', t['ph_name'], ac='organization'),
+          text('contactPerson', 'contact', 'contact', t['ph_contact'], ac='name'),
+          text('buyerEmail', 'email', 'email', 'procurement@buyer.com', typ='email', ac='email'),
+          phone),
+        G(f'<div>{L("commoditySelect", "comm")}<select id="commoditySelect" name="commodity" required class="{SEL}"{ltr}>{prod}</select></div>',
+          text('grade', 'grade', 'grade', t['ph_grade'], opt=True),
+          text('quantity', 'quantity', 'qty', t['ph_qty']),
+          select('packing', 'packing', 'packing', 'packing_o'),
+          select('bagLabel', 'label', 'label', 'label_o'),
+          select('sample', 'sample', 'sample', 'sample_o', opt=True),
+          text('targetPrice', 'price', 'price', t['ph_price'], opt=True, extra=' inputmode="decimal" maxlength="40" dir="ltr"')),
+        G(country, port,
+          select('incoterm', 'incoterm', 'incoterm', 'incoterm_o'),
+          select('shipment', 'shipment', 'shipment', 'shipment_o'),
+          select('payment', 'payment', 'payment', 'payment_o')) + notes,
+    ]
+    u = UI[lang]
+    prog = ('<div data-rfq-progress class="hidden" aria-hidden="true"><div class="flex justify-between text-xs font-semibold text-emerald-200/80 mb-2">'
+            + ''.join(f'<span data-rfq-steplabel="{i}" class="transition-colors">{i + 1}. {e(x)}</span>' for i, x in enumerate(u['steps']))
+            + '</div><div class="h-1.5 rounded-full bg-white/10 overflow-hidden"><div data-rfq-bar class="h-full bg-brand-warmGold rounded-full transition-all duration-300" style="width:33%"></div></div>'
+            + '<p data-rfq-stepof class="sr-only" aria-live="polite"></p></div>')
+    fs = ''.join(f'<fieldset data-rfq-step="{i}" class="space-y-5 border-0 p-0 m-0 min-w-0"><legend class="sr-only">{e(u["steps"][i])}</legend>{x}</fieldset>' for i, x in enumerate(steps))
+    btn = 'py-3.5 rounded-xl text-base font-bold transition-transform active:scale-[0.99] disabled:opacity-60'
+    nav = (f'<div data-rfq-nav class="flex gap-3 pt-1">'
+           f'<button type="button" data-rfq-back hidden class="{btn} px-6 border border-white/30 text-white hover:bg-white/10">{e(u["back"])}</button>'
+           f'<button type="button" data-rfq-next hidden class="{btn} flex-1 bg-white/90 hover:bg-white text-slate-950">{e(u["next"])}</button>'
+           f'<button type="submit" id="rfqSubmit" class="{btn} flex-1 w-full bg-brand-warmGold hover:bg-yellow-500 text-slate-950 shadow-lg">{e(u["submit"])}</button></div>')
+    note = ('<div data-rfq-restored hidden class="rounded-lg border border-brand-warmGold/40 bg-brand-warmGold/10 px-4 py-2.5 text-sm text-emerald-50 flex flex-wrap items-center justify-between gap-2">'
+            f'<span>{e(u["restored"])}</span><button type="button" data-rfq-clear class="font-semibold text-brand-goldLight underline underline-offset-4">{e(u["clear"])}</button></div>')
+    done = ('<div data-rfq-done hidden tabindex="-1" class="text-center py-6 outline-none">'
+            '<div class="mx-auto w-16 h-16 rounded-full bg-brand-warmGold/15 border-2 border-brand-warmGold flex items-center justify-center text-brand-goldLight"><svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>'
+            f'<h3 class="hfont text-2xl font-bold mt-5">{e(u["ok_t"])}</h3>'
+            f'<p class="text-emerald-100 text-sm mt-2 max-w-md mx-auto leading-relaxed">{e(u["ok_b"])}</p>'
+            f'<div class="mt-6 inline-flex flex-col items-center rounded-2xl border border-brand-warmGold/50 bg-black/20 px-6 py-4"><span class="text-xs font-bold uppercase tracking-widest text-brand-goldLight">{e(u["ref_l"])}</span>'
+            '<div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 mt-1" dir="ltr"><span data-rfq-ref class="whitespace-nowrap text-2xl sm:text-3xl font-extrabold tracking-wide text-white select-all"></span>'
+            f'<button type="button" data-rfq-copy class="text-xs font-bold px-3 py-1.5 rounded-lg border border-white/30 hover:bg-white/10" data-copied="{e(u["copied"])}">{e(u["copy"])}</button></div></div>'
+            f'<p class="text-emerald-100 text-sm mt-6">{e(u["wa_hint"])}</p>'
+            f'<a data-rfq-wa href="https://wa.me/919492992666" target="_blank" rel="noopener" class="mt-3 inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-[#25D366] hover:bg-[#1ebe5b] text-slate-950 font-bold shadow-lg">{WA_SVG}{e(u["wa"])}</a>'
+            f'<div class="mt-6"><button type="button" data-rfq-another class="text-sm font-semibold text-brand-goldLight underline underline-offset-4">{e(u["another"])}</button></div></div>')
+    err = '<div data-rfq-error role="alert" hidden class="rounded-xl p-4 text-sm bg-red-100 text-red-900"></div>'
+    i18n = {k: u[k] for k in ('steps', 'step_of', 'submit', 'sending', 'err', 'wa_msg', 'copied', 'copy')}
+    import json
+    return (prog + note + fs + err + nav + done +
+            f'<script type="application/json" id="rfqI18n">{json.dumps(i18n, ensure_ascii=False).replace("</", "<\\/")}</script>')
+
+
+WA_SVG = '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.5 14.4c-.3-.1-1.7-.8-2-.9-.3-.1-.5-.1-.7.1-.2.3-.8.9-.9 1.1-.2.2-.3.2-.6.1-.3-.1-1.2-.5-2.3-1.4-.9-.8-1.4-1.7-1.6-2-.2-.3 0-.5.1-.6l.4-.5c.2-.2.2-.3.3-.5.1-.2 0-.4 0-.5l-.9-2.2c-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.1.2 2.1 3.2 5.1 4.5.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.7-.7 2-1.4.2-.7.2-1.2.2-1.4-.1-.1-.3-.2-.6-.3zM12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2z"/></svg>'
+
+UI = {
+ 'en': dict(steps=['Company', 'Product', 'Shipping & terms'], step_of='Step {n} of {t}', next='Next', back='Back',
+   submit='Submit RFQ', sending='Sending…', ok_t='Thank you, we have your request',
+   ok_b='Our export desk will send your quotation within 24 business hours. A confirmation email is on its way; please check your spam folder if you don’t see it.',
+   ref_l='Your RFQ No.', copy='Copy', copied='Copied', wa_hint='Want a faster reply? Send your request to our export desk on WhatsApp too.',
+   wa='Also send on WhatsApp', another='Submit another request',
+   err='Your request could not be sent. Please check your connection and try again, or email info@bhumivarahiimpex.com.',
+   restored='We restored the answers you started earlier.', clear='Start over',
+   wa_msg='Hello Bhumi Varahi Impex, I have just sent an RFQ on your website.'),
+ 'ar': dict(steps=['الشركة', 'المنتج', 'الشحن والشروط'], step_of='الخطوة {n} من {t}', next='التالي', back='رجوع',
+   submit='إرسال الطلب', sending='جارٍ الإرسال…', ok_t='شكراً لكم، استلمنا طلبكم',
+   ok_b='سيرسل فريق التصدير عرض السعر خلال 24 ساعة عمل. أرسلنا لكم رسالة تأكيد بالبريد؛ يرجى مراجعة مجلد الرسائل غير المرغوب فيها إن لم تجدوها.',
+   ref_l='رقم طلبكم', copy='نسخ', copied='تم النسخ', wa_hint='تريدون رداً أسرع؟ أرسلوا طلبكم إلى فريق التصدير عبر واتساب أيضاً.',
+   wa='أرسلوا عبر واتساب أيضاً', another='إرسال طلب آخر',
+   err='تعذر إرسال الطلب. يرجى التحقق من الاتصال والمحاولة مرة أخرى، أو مراسلتنا على info@bhumivarahiimpex.com.',
+   restored='استعدنا الإجابات التي بدأتم بها سابقاً.', clear='البدء من جديد',
+   wa_msg='مرحباً بومي فاراهي إمبكس، أرسلت للتو طلب عرض سعر عبر موقعكم.'),
+ 'fr': dict(steps=['Société', 'Produit', 'Expédition et conditions'], step_of='Étape {n} sur {t}', next='Suivant', back='Retour',
+   submit='Envoyer la demande', sending='Envoi…', ok_t='Merci, nous avons bien reçu votre demande',
+   ok_b='Notre service export vous enverra un devis sous 24 heures ouvrées. Un e-mail de confirmation est en route ; vérifiez vos courriers indésirables si vous ne le voyez pas.',
+   ref_l='Votre n° de demande', copy='Copier', copied='Copié', wa_hint='Pour une réponse plus rapide, envoyez aussi votre demande à notre service export sur WhatsApp.',
+   wa='Envoyer aussi sur WhatsApp', another='Faire une autre demande',
+   err='Votre demande n’a pas pu être envoyée. Vérifiez votre connexion et réessayez, ou écrivez à info@bhumivarahiimpex.com.',
+   restored='Nous avons restauré les réponses que vous aviez commencées.', clear='Recommencer',
+   wa_msg='Bonjour Bhumi Varahi Impex, je viens d’envoyer une demande de devis sur votre site.'),
+}
