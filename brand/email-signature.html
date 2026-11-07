@@ -12,23 +12,63 @@
   h1 { font-size: 20px; color: #1B4D3E; margin: 0 0 6px; }
   ol { line-height: 1.7; padding-left: 20px; }
   button { background: #1B4D3E; color: #fff; border: 0; border-radius: 8px; padding: 10px 18px; font-weight: bold; cursor: pointer; }
-  #ok { color: #1B4D3E; font-weight: bold; margin-left: 10px; }
+  .ok { color: #1B4D3E; font-weight: bold; margin-left: 10px; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="card">
     <h1>Bhumi Varahi Impex email signature</h1>
+    <p>Gmail adds your signature automatically to <b>every new email, reply and forward</b>. Choose a style, copy it once, and every email you write will carry the brand.</p>
     <ol>
-      <li>Click <b>Copy signature</b> below.</li>
-      <li>In Gmail, open <b>Settings (gear) &rarr; See all settings &rarr; General &rarr; Signature &rarr; Create new</b>.</li>
-      <li>Paste with <b>Ctrl+V</b>, then replace <b>[Your Name]</b>, <b>[Designation]</b> and <b>[Phone]</b>.</li>
-      <li>Set it as the default for new emails and replies, then click <b>Save changes</b> at the bottom.</li>
+      <li>Click <b>Copy</b> under the style you want.</li>
+      <li>In Gmail, open <b>Settings (gear) &rarr; See all settings &rarr; General &rarr; Signature &rarr; Create new</b>, name it "Bhumi Varahi", and paste with <b>Ctrl+V</b>.</li>
+      <li>Replace <b>[Your Name]</b>, <b>[Designation]</b> and <b>[Phone / WhatsApp]</b>.</li>
+      <li>Under <b>Signature defaults</b>, choose it for both <b>For new emails use</b> and <b>On reply/forward use</b>. Tick <b>Insert signature before quoted text in replies</b>.</li>
+      <li>Scroll down and click <b>Save changes</b>. Click <b>Compose</b> to check it.</li>
     </ol>
-    <button id="copy">Copy signature</button><span id="ok"></span>
   </div>
 
-  <div class="card" id="sig">
+  <div class="card">
+    <h1>Option 1: Full brand signature (recommended)</h1>
+    <p>Matches the branded email: gold and green lines, logo, and the dark green company footer.</p>
+    <button class="copy" data-target="sigFull">Copy full signature</button><span class="ok"></span>
+    <div id="sigFull" style="margin-top:20px;">
+<!-- FULL SIGNATURE START -->
+<table cellpadding="0" cellspacing="0" border="0" width="560" style="width:560px;max-width:100%;font-family:Arial,Helvetica,sans-serif;border-collapse:collapse;">
+  <tr><td style="padding:0 0 10px 0;font-size:14px;color:#1e293b;">Warm regards,</td></tr>
+  <tr><td style="height:3px;line-height:3px;font-size:0;background:#D4AF37;">&nbsp;</td></tr>
+  <tr><td style="height:2px;line-height:2px;font-size:0;background:#1B4D3E;">&nbsp;</td></tr>
+  <tr><td style="padding:16px 0;">
+    <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr>
+      <td style="padding:0 18px 0 0;vertical-align:middle;"><a href="https://www.bhumivarahiimpex.com"><img src="https://www.bhumivarahiimpex.com/brand/email-logo.png" width="200" alt="Bhumi Varahi Impex Pvt. Ltd." style="display:block;border:0;width:200px;height:auto;"></a></td>
+      <td style="padding:0 0 0 18px;border-left:2px solid #D4AF37;vertical-align:middle;">
+        <div style="font-size:16px;font-weight:bold;color:#1B4D3E;line-height:20px;">[Your Name]</div>
+        <div style="font-size:12px;color:#B8860B;font-weight:bold;line-height:18px;text-transform:uppercase;letter-spacing:.5px;">[Designation]</div>
+        <div style="font-size:12px;line-height:18px;color:#475569;padding-top:4px;">
+          <span style="color:#1B4D3E;font-weight:bold;">P</span>&nbsp; [Phone / WhatsApp]<br>
+          <span style="color:#1B4D3E;font-weight:bold;">E</span>&nbsp; <a href="mailto:info@bhumivarahiimpex.com" style="color:#475569;text-decoration:none;">info@bhumivarahiimpex.com</a>
+        </div>
+      </td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="background:#1B4D3E;padding:10px 16px;">
+    <a href="https://www.bhumivarahiimpex.com/#rfq" style="color:#E5C158;font-size:12px;font-weight:bold;text-decoration:none;">Request a Quotation &rarr;</a>
+  </td></tr>
+  <tr><td style="background:#0E2820;padding:14px 16px;color:#cbd5e1;font-size:11px;line-height:17px;">
+    <span style="color:#E5C158;font-weight:bold;letter-spacing:1px;">BHUMI VARAHI IMPEX PRIVATE LIMITED</span><br>
+    Merchant exporters of rice, spices and industrial goods &bull; Kakinada &bull; Visakhapatnam &bull; Chennai, India<br>
+    <a href="https://www.bhumivarahiimpex.com" style="color:#ffffff;text-decoration:none;">www.bhumivarahiimpex.com</a>
+  </td></tr>
+</table>
+<!-- FULL SIGNATURE END -->
+    </div>
+  </div>
+
+  <div class="card">
+    <h1>Option 2: Compact signature</h1>
+    <button class="copy" data-target="sig">Copy compact signature</button><span class="ok"></span>
+    <div id="sig" style="margin-top:20px;">
 <!-- SIGNATURE START -->
 <table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,Helvetica,sans-serif;color:#1e293b;border-collapse:collapse;">
   <tr>
@@ -53,20 +93,21 @@
   </tr>
 </table>
 <!-- SIGNATURE END -->
+    </div>
   </div>
 </div>
 <script>
-  document.getElementById('copy').addEventListener('click', async () => {
-    const el = document.getElementById('sig');
-    const html = el.innerHTML;
+  document.querySelectorAll('.copy').forEach(btn => btn.addEventListener('click', async () => {
+    const el = document.getElementById(btn.dataset.target);
     try {
-      await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([el.innerText], { type: 'text/plain' }) })]);
+      await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([el.innerHTML], { type: 'text/html' }), 'text/plain': new Blob([el.innerText], { type: 'text/plain' }) })]);
     } catch (e) {
       const r = document.createRange(); r.selectNodeContents(el);
-      const s = getSelection(); s.removeAllRanges(); s.addRange(r); document.execCommand('copy'); s.removeAllRanges();
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); document.execCommand('copy'); sel.removeAllRanges();
     }
-    document.getElementById('ok').textContent = 'Copied! Now paste it into Gmail.';
-  });
+    document.querySelectorAll('.ok').forEach(o => o.textContent = '');
+    btn.nextElementSibling.textContent = 'Copied! Now paste it into Gmail.';
+  }));
 </script>
 </body>
 </html>
