@@ -108,7 +108,7 @@ function notify_(p) {
     </table>
     <div style="background:#0E2820;color:#cbd5e1;padding:10px 18px;font-size:12px;">Reply to this email to answer the buyer directly. Saved in the RFQs sheet.</div>
   </div>`;
-  MailApp.sendEmail({
+  sendMail_({
     to: NOTIFY_EMAIL,
     replyTo: p.email || NOTIFY_EMAIL,
     subject: `New RFQ ${p.ref}: ${p.commodity || 'Inquiry'} from ${p.name || 'website visitor'}`,
@@ -142,13 +142,13 @@ function acknowledge_(p) {
       <p style="margin:0;">Warm regards,<br><strong style="color:#1B4D3E;">Export Desk</strong><br>Bhumi Varahi Impex Pvt Ltd</p>
     </div>
     <div style="background:#0E2820;color:#cbd5e1;padding:12px 24px;font-size:12px;">
-      <a href="mailto:${NOTIFY_EMAIL}" style="color:#E5C158;text-decoration:none;">${NOTIFY_EMAIL}</a> &nbsp;|&nbsp;
-      <a href="https://wa.me/919492992666" style="color:#E5C158;text-decoration:none;">WhatsApp +91 94929 92666</a> &nbsp;|&nbsp;
+      <span style="color:#E5C158;">${NOTIFY_EMAIL}</span> &nbsp;|&nbsp;
+      <span style="color:#E5C158;">WhatsApp +91 94929 92666</span> &nbsp;|&nbsp;
       <a href="https://www.bhumivarahiimpex.com" style="color:#E5C158;text-decoration:none;">www.bhumivarahiimpex.com</a>
     </div>
   </div>`;
   const text = `Dear ${p.name || 'Sir / Madam'},\n\nThank you for your request for quotation. We have received it, and our export desk is now working on your quotation. We will be in touch as soon as the quotation is ready.\n\nRFQ No.: ${p.ref}\nCommodity: ${p.commodity || '-'}\nQuantity: ${p.quantity || '-'}\n\nWarm regards,\nExport Desk, Bhumi Varahi Impex Pvt Ltd\n${NOTIFY_EMAIL} | WhatsApp +91 94929 92666 | www.bhumivarahiimpex.com`;
-  MailApp.sendEmail({
+  sendMail_({
     to: email,
     replyTo: NOTIFY_EMAIL,
     subject: `We received your RFQ ${p.ref}: ${p.commodity || 'Quotation request'} | Bhumi Varahi Impex`,
@@ -156,6 +156,25 @@ function acknowledge_(p) {
     htmlBody: html,
     name: 'Bhumi Varahi Impex'
   });
+}
+
+// Sends through the info@ Gmail account itself (GmailApp), like an email typed by hand:
+// it gets a normal Message-ID, shows in Sent, and Gmail recipients trust it more than
+// the generic Apps Script mailer. Falls back to MailApp if Gmail sending is unavailable.
+function sendMail_(o) {
+  const text = o.body || String(o.htmlBody || '').replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<br\s*\/?>|<\/(p|div|tr|h\d)>/gi, '\n').replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/[ \t]+/g, ' ').replace(/\n\s*\n\s*/g, '\n\n').trim();
+  const opts = { name: o.name || 'Bhumi Varahi Impex' };
+  if (o.htmlBody) opts.htmlBody = o.htmlBody;
+  if (o.replyTo) opts.replyTo = o.replyTo;
+  try {
+    GmailApp.sendEmail(o.to, o.subject, text, opts);
+  } catch (err) {
+    console.warn('GmailApp failed, using MailApp: ' + err);
+    MailApp.sendEmail(o);
+  }
 }
 
 function json_(obj) {
@@ -203,7 +222,7 @@ function sendWeeklySummary() {
       ${open.length ? `<table style="width:100%;border-collapse:collapse;"><tr>${th('Received')}${th('Ref')}${th('Buyer')}${th('Commodity')}${th('Qty')}${th('Country')}${th('Status')}${th('Age')}</tr>${openRows}</table>` : '<p style="color:#5A6A72;font-size:13px;">No open requests. Nice work.</p>'}
       <p style="color:#5A6A72;font-size:12px;margin-top:14px;">Red ages are "New" requests older than 3 days. Update the Status column in the sheet as you follow up: <a href="${SpreadsheetApp.getActiveSpreadsheet().getUrl()}" style="color:#1B4D3E;">open the RFQ sheet</a>.</p>
     </div></div>`;
-  MailApp.sendEmail({ to: NOTIFY_EMAIL, subject: `Weekly RFQ summary: ${newThisWeek.length} new, ${open.length} open`, htmlBody: html, name: 'Bhumi Varahi Website' });
+  sendMail_({ to: NOTIFY_EMAIL, subject: `Weekly RFQ summary: ${newThisWeek.length} new, ${open.length} open`, htmlBody: html, name: 'Bhumi Varahi Website' });
 }
 
 // ===== AUTOMATIONS =====
@@ -357,7 +376,7 @@ function dailyDigest() {
   if (needReply.length) parts.push(needReply.length + ' to reply');
   if (needQuote.length) parts.push(needQuote.length + ' to quote');
   if (due.length) parts.push(due.length + ' outreach');
-  MailApp.sendEmail({ to: NOTIFY_EMAIL, subject: `Today's follow-ups: ${parts.join(', ')}`, htmlBody: html, name: 'Bhumi Varahi Website' });
+  sendMail_({ to: NOTIFY_EMAIL, subject: `Today's follow-ups: ${parts.join(', ')}`, htmlBody: html, name: 'Bhumi Varahi Website' });
   return 'Digest sent: ' + parts.join(', ');
 }
 
@@ -382,13 +401,13 @@ function healthCheck() {
   const wasDown = props.getProperty('healthDown') === '1';
   if (problems.length && !wasDown) {
     props.setProperty('healthDown', '1');
-    MailApp.sendEmail({ to: NOTIFY_EMAIL, name: 'Bhumi Varahi Website',
+    sendMail_({ to: NOTIFY_EMAIL, name: 'Bhumi Varahi Website',
       subject: 'ALERT: website or RFQ form is down',
       body: 'The automatic check found a problem:\n\n- ' + problems.join('\n- ') +
             '\n\nCheck GitHub Pages (github.com/sain936/bhumivarahiimpex-site/settings/pages), the domain DNS, and the Apps Script deployment.\nYou will get one more email when it is working again.' });
   } else if (!problems.length && wasDown) {
     props.deleteProperty('healthDown');
-    MailApp.sendEmail({ to: NOTIFY_EMAIL, name: 'Bhumi Varahi Website',
+    sendMail_({ to: NOTIFY_EMAIL, name: 'Bhumi Varahi Website',
       subject: 'Resolved: website and RFQ form are working again',
       body: 'The website and the RFQ form endpoint are responding normally again.' });
   }
@@ -436,7 +455,7 @@ function sendMonthlyReport() {
       ${list('By country', tally(5))}
       <p style="color:#5A6A72;font-size:12px;margin-top:14px;"><a href="${SpreadsheetApp.getActiveSpreadsheet().getUrl()}" style="color:#1B4D3E;">Open the RFQ sheet</a></p>
     </div></div>`;
-  MailApp.sendEmail({ to: NOTIFY_EMAIL, subject: `Monthly RFQ report, ${label}: ${rows.length} RFQs, ${status('Won')} won`, htmlBody: html, name: 'Bhumi Varahi Website' });
+  sendMail_({ to: NOTIFY_EMAIL, subject: `Monthly RFQ report, ${label}: ${rows.length} RFQs, ${status('Won')} won`, htmlBody: html, name: 'Bhumi Varahi Website' });
   return 'Monthly report sent for ' + label;
 }
 
