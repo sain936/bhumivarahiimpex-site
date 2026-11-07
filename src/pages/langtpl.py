@@ -166,8 +166,8 @@ def page(code,t,L,groups,SHEETS_URL,CAT):
     </div>
     <a href="{wa}" class="wa-float" target="_blank" rel="noopener" aria-label="WhatsApp">{WAICON}</a>
   </footer>
-  <script src="/js/dialcodes.js?v=6" defer></script>
-  <script src="/js/rfqform.js?v=1" defer></script>
+  <script src="/js/dialcodes.js?v=7" defer></script>
+  <script src="/js/rfqform.js?v=2" defer></script>
 </body>
 </html>
 '''

@@ -23,7 +23,7 @@
     ['SE','Sweden','46'],['CH','Switzerland','41'],['SY','Syria','963'],['TW','Taiwan','886'],['TZ','Tanzania','255'],['TH','Thailand','66'],
     ['TG','Togo','228'],['TN','Tunisia','216'],['TR','Türkiye','90'],['UG','Uganda','256'],['UA','Ukraine','380'],
     ['GB','United Kingdom','44'],['US','United States','1'],['UZ','Uzbekistan','998'],['VN','Vietnam','84'],['YE','Yemen','967'],
-    ['ZM','Zambia','260'],['ZW','Zimbabwe','263']
+    ['ZM','Zambia','260'],['ZW','Zimbabwe','263'],['SI','Slovenia','386']
   ];
   var ALIAS = { uae: 'AE', emirates: 'AE', dubai: 'AE', 'abu dhabi': 'AE', ksa: 'SA', saudi: 'SA', usa: 'US', us: 'US',
     america: 'US', uk: 'GB', england: 'GB', britain: 'GB', 'ivory coast': 'CI', drc: 'CD', turkey: 'TR', korea: 'KR',
@@ -77,33 +77,58 @@
     SA: ['Jeddah', 'Dammam (King Abdulaziz Port)', 'King Abdullah Port', 'Jubail', 'Riyadh Dry Port'],
     OM: ['Sohar', 'Salalah', 'Muscat (Sultan Qaboos)', 'Duqm'], QA: ['Hamad Port'], KW: ['Shuwaikh', 'Shuaiba'],
     BH: ['Khalifa Bin Salman Port'], IN: ['Nhava Sheva (JNPT)', 'Mundra', 'Kakinada', 'Visakhapatnam', 'Chennai', 'Kolkata'],
-    AF: ['Via Karachi', 'Via Bandar Abbas', 'Kabul ICD'], DZ: ['Algiers', 'Oran', 'Annaba', 'Béjaïa'], AO: ['Luanda', 'Lobito'],
-    AU: ['Sydney', 'Melbourne', 'Brisbane', 'Fremantle', 'Adelaide'], AT: ['Via Hamburg', 'Via Koper'],
+    AF: [], DZ: ['Algiers', 'Oran', 'Annaba', 'Béjaïa'], AO: ['Luanda', 'Lobito'],
+    AU: ['Sydney', 'Melbourne', 'Brisbane', 'Fremantle', 'Adelaide'], AT: [],
     BD: ['Chittagong', 'Mongla'], BE: ['Antwerp', 'Zeebrugge'], BJ: ['Cotonou'], BR: ['Santos', 'Paranaguá', 'Rio de Janeiro'],
-    BF: ['Via Abidjan', 'Via Lomé', 'Via Tema', 'Ouagadougou ICD'], KH: ['Sihanoukville', 'Phnom Penh'], CM: ['Douala', 'Kribi'],
+    BF: [], KH: ['Sihanoukville', 'Phnom Penh'], CM: ['Douala', 'Kribi'],
     CA: ['Vancouver', 'Montreal', 'Toronto', 'Halifax'], CN: ['Shanghai', 'Ningbo', 'Qingdao', 'Shenzhen', 'Tianjin', 'Guangzhou'],
-    CG: ['Pointe-Noire'], CD: ['Matadi', 'Via Dar es Salaam', 'Via Mombasa'], CI: ['Abidjan', 'San-Pédro'], DJ: ['Djibouti'],
-    EG: ['Alexandria', 'Port Said', 'Damietta', 'Sokhna'], ET: ['Via Djibouti', 'Modjo Dry Port'], FJ: ['Suva', 'Lautoka'],
+    CG: ['Pointe-Noire'], CD: ['Matadi', 'Boma'], CI: ['Abidjan', 'San-Pédro'], DJ: ['Djibouti'],
+    EG: ['Alexandria', 'Port Said', 'Damietta', 'Sokhna'], ET: [], FJ: ['Suva', 'Lautoka'],
     FR: ['Le Havre', 'Marseille-Fos'], GA: ['Libreville (Owendo)'], GM: ['Banjul'], DE: ['Hamburg', 'Bremerhaven'],
     GH: ['Tema', 'Takoradi'], GN: ['Conakry'], HK: ['Hong Kong'], ID: ['Jakarta (Tanjung Priok)', 'Surabaya', 'Belawan'],
     IR: ['Bandar Abbas', 'Bushehr', 'Chabahar'], IQ: ['Umm Qasr'], IE: ['Dublin', 'Cork'], IT: ['Genoa', 'La Spezia', 'Naples'],
     JP: ['Tokyo', 'Yokohama', 'Osaka', 'Kobe', 'Nagoya'], JO: ['Aqaba'], KE: ['Mombasa', 'Lamu'], LB: ['Beirut'], LR: ['Monrovia'],
-    LY: ['Tripoli', 'Misrata', 'Benghazi'], MG: ['Toamasina'], MW: ['Via Beira', 'Via Nacala', 'Via Dar es Salaam'],
-    MY: ['Port Klang', 'Penang', 'Pasir Gudang', 'Tanjung Pelepas'], MV: ['Malé'], ML: ['Via Dakar', 'Via Abidjan', 'Bamako ICD'],
+    LY: ['Tripoli', 'Misrata', 'Benghazi'], MG: ['Toamasina'], MW: [],
+    MY: ['Port Klang', 'Penang', 'Pasir Gudang', 'Tanjung Pelepas'], MV: ['Malé'], ML: [],
     MR: ['Nouakchott', 'Nouadhibou'], MU: ['Port Louis'], MA: ['Casablanca', 'Tanger Med', 'Agadir'], MZ: ['Maputo', 'Beira', 'Nacala'],
-    MM: ['Yangon'], NP: ['Via Kolkata', 'Birgunj ICD'], NL: ['Rotterdam', 'Amsterdam'], NZ: ['Auckland', 'Tauranga', 'Lyttelton'],
-    NE: ['Via Cotonou', 'Via Lomé', 'Niamey ICD'], NG: ['Lagos (Apapa)', 'Lagos (Tin Can Island)', 'Onne', 'Lekki'],
+    MM: ['Yangon'], NP: [], NL: ['Rotterdam', 'Amsterdam'], NZ: ['Auckland', 'Tauranga', 'Lyttelton'],
+    NE: [], NG: ['Lagos (Apapa)', 'Lagos (Tin Can Island)', 'Onne', 'Lekki'],
     PK: ['Karachi', 'Port Qasim'], PH: ['Manila', 'Cebu', 'Davao'], PL: ['Gdańsk', 'Gdynia'], PT: ['Lisbon', 'Leixões', 'Sines'],
-    RU: ['Novorossiysk', 'St Petersburg', 'Vladivostok'], RW: ['Via Mombasa', 'Via Dar es Salaam', 'Kigali ICD'], SN: ['Dakar'],
+    RU: ['Novorossiysk', 'St Petersburg', 'Vladivostok'], RW: [], SN: ['Dakar'],
     SC: ['Port Victoria'], SL: ['Freetown'], SG: ['Singapore'], SO: ['Mogadishu', 'Berbera', 'Bosaso'],
     ZA: ['Durban', 'Cape Town', 'Gqeberha (Port Elizabeth)'], KR: ['Busan', 'Incheon'], ES: ['Valencia', 'Algeciras', 'Barcelona'],
-    LK: ['Colombo'], SD: ['Port Sudan'], SE: ['Gothenburg'], CH: ['Via Rotterdam', 'Via Antwerp', 'Basel'], SY: ['Latakia', 'Tartus'],
+    LK: ['Colombo'], SD: ['Port Sudan'], SE: ['Gothenburg'], CH: [], SY: ['Latakia', 'Tartus'],
     TW: ['Kaohsiung', 'Keelung'], TZ: ['Dar es Salaam', 'Zanzibar', 'Tanga'], TH: ['Laem Chabang', 'Bangkok'], TG: ['Lomé'],
-    TN: ['Radès', 'Sfax', 'Sousse'], TR: ['Mersin', 'Istanbul (Ambarli)', 'Izmir'], UG: ['Via Mombasa', 'Via Dar es Salaam', 'Kampala ICD'],
+    TN: ['Radès', 'Sfax', 'Sousse'], TR: ['Mersin', 'Istanbul (Ambarli)', 'Izmir'], UG: [],
     UA: ['Odesa', 'Chornomorsk'], GB: ['Felixstowe', 'Southampton', 'London Gateway', 'Liverpool'],
-    US: ['New York / New Jersey', 'Houston', 'Savannah', 'Los Angeles / Long Beach', 'Oakland'], UZ: ['Via Bandar Abbas', 'Tashkent ICD'],
-    VN: ['Ho Chi Minh City (Cat Lai)', 'Haiphong'], YE: ['Aden', 'Hodeidah', 'Mukalla'], ZM: ['Via Dar es Salaam', 'Via Durban', 'Lusaka ICD'],
-    ZW: ['Via Beira', 'Via Durban', 'Harare ICD']
+    US: ['New York / New Jersey', 'Houston', 'Savannah', 'Los Angeles / Long Beach', 'Oakland'], UZ: [],
+    VN: ['Ho Chi Minh City (Cat Lai)', 'Haiphong'], YE: ['Aden', 'Hodeidah', 'Mukalla'], ZM: [],
+    ZW: [], SI: ['Koper']
+  };
+  // Landlocked (or partly served) countries: [transit port, port country ISO, overland corridor].
+  var TRANSIT = {
+    RW: [['Dar es Salaam', 'TZ', 'Central Corridor'], ['Mombasa', 'KE', 'Northern Corridor']],
+    UG: [['Mombasa', 'KE', 'Northern Corridor'], ['Dar es Salaam', 'TZ', 'Central Corridor']],
+    CD: [['Dar es Salaam', 'TZ', 'Central Corridor'], ['Mombasa', 'KE', 'Northern Corridor']],
+    ET: [['Djibouti', 'DJ', 'Djibouti Corridor'], ['Berbera', 'SO', 'Berbera Corridor']],
+    ZM: [['Dar es Salaam', 'TZ', 'Dar es Salaam Corridor'], ['Durban', 'ZA', 'North-South Corridor'], ['Beira', 'MZ', 'Beira Corridor']],
+    ZW: [['Beira', 'MZ', 'Beira Corridor'], ['Durban', 'ZA', 'North-South Corridor']],
+    MW: [['Nacala', 'MZ', 'Nacala Corridor'], ['Beira', 'MZ', 'Beira Corridor'], ['Dar es Salaam', 'TZ', 'Dar es Salaam Corridor']],
+    ML: [['Dakar', 'SN', 'Dakar-Bamako Corridor'], ['Abidjan', 'CI', 'Abidjan-Bamako Corridor']],
+    BF: [['Abidjan', 'CI', 'Abidjan-Ouagadougou Corridor'], ['Tema', 'GH', 'Tema-Ouagadougou Corridor'], ['Lomé', 'TG', 'Lomé-Ouagadougou Corridor']],
+    NE: [['Cotonou', 'BJ', 'Cotonou-Niamey Corridor'], ['Lomé', 'TG', 'Lomé-Niamey Corridor']],
+    NP: [['Kolkata', 'IN', 'Kolkata-Birgunj route'], ['Visakhapatnam', 'IN', 'Visakhapatnam-Birgunj rail route']],
+    AF: [['Karachi', 'PK', 'Karachi-Torkham route'], ['Bandar Abbas', 'IR', 'Iran overland route'], ['Chabahar', 'IR', 'Chabahar-Zaranj route']],
+    UZ: [['Bandar Abbas', 'IR', 'Iran-Turkmenistan route'], ['Chabahar', 'IR', 'Chabahar overland route']],
+    CH: [['Rotterdam', 'NL', 'Rhine barge / rail route'], ['Antwerp', 'BE', 'rail / road route']],
+    AT: [['Hamburg', 'DE', 'rail route'], ['Koper', 'SI', 'rail route']]
+  };
+  // Usual inland end points (suggestions only; buyers can type anything).
+  var INLAND = {
+    RW: ['Kigali (Masaka ICD)', 'Kigali (MAGERWA)'], UG: ['Kampala ICD', 'Kampala (Mukono ICD)'], CD: ['Goma', 'Bukavu', 'Lubumbashi'],
+    ET: ['Modjo Dry Port', 'Addis Ababa'], ZM: ['Lusaka ICD', 'Ndola'], ZW: ['Harare ICD', 'Bulawayo'], MW: ['Lilongwe', 'Blantyre'],
+    ML: ['Bamako ICD'], BF: ['Ouagadougou ICD', 'Bobo-Dioulasso'], NE: ['Niamey ICD'], NP: ['Birgunj ICD', 'Kathmandu'],
+    AF: ['Kabul ICD', 'Kandahar'], UZ: ['Tashkent ICD'], CH: ['Basel', 'Zurich'], AT: ['Vienna', 'Linz']
   };
   var OTHER = '__other';
   var byName = {}; C.forEach(function (c) { byName[c[1]] = c; });
@@ -261,32 +286,57 @@
   });
 
   // ---- Destination port (depends on country) ----
+  // Landlocked countries show transit ports (with the port country's flag) and ask for the final inland destination.
   document.querySelectorAll('select[data-port-picker]').forEach(function (sel) {
     var form = sel.form, country = form && form.querySelector('select[name="country"]');
     var other = form && form.querySelector('[name="port_other"]');
     var otherTxt = attr(sel, 'data-other', 'Other port');
+    var wrap = form && form.querySelector('[data-final-wrap]'), fin = form && form.querySelector('[name="final_dest"]');
+    var list = wrap && wrap.querySelector('datalist'), route = wrap && wrap.querySelector('[data-route]');
+    var lbl = form && form.querySelector('[data-port-label]');
     function iso() { var c = country && byName[country.value]; return c ? c[0] : ''; }
     function items() {
-      var i = iso(), list = (PORTS[i] || []).map(function (pName) { return { v: pName, iso: i, label: pName }; });
-      return list.concat([{ v: OTHER, iso: '', label: otherTxt }]);
+      var i = iso(), own = PORTS[i] || [], tr = TRANSIT[i] || [];
+      var seaG = tr.length && own.length ? attr(sel, 'data-sea-label', 'Sea ports') : '';
+      var trG = attr(sel, 'data-transit-label', 'Transit ports (overland)');
+      var list = own.map(function (pName) { return { v: pName, iso: i, label: pName, group: seaG }; })
+        .concat(tr.map(function (t) {
+          var cn = byIso[t[1]] ? byIso[t[1]][1] : '';
+          return { v: t[0] + ', ' + cn + ' (transit)', iso: t[1], label: t[0], right: cn, group: trG, corridor: t[2] };
+        }));
+      return list.concat([{ v: OTHER, iso: '', label: otherTxt, group: tr.length ? trG : '' }]);
     }
     function fill() {
       sel.innerHTML = ''; opt(sel, '', ''); sel.options[0].disabled = true; sel.options[0].selected = true;
-      items().forEach(function (x) { opt(sel, x.v, x.label); });
+      items().forEach(function (x) { opt(sel, x.v, x.label + (x.right ? ', ' + x.right : '')); });
+    }
+    function landlocked() { var i = iso(); return !!(TRANSIT[i] && !(PORTS[i] || []).length); }
+    function transit() {
+      var land = landlocked();
+      if (lbl) lbl.textContent = lbl.getAttribute(land ? 'data-transit' : 'data-std');
+      if (!wrap) return;
+      var it = items().filter(function (x) { return x.v === sel.value; })[0];
+      var on = !!((it && it.corridor) || (land && sel.value === OTHER));
+      wrap.hidden = !on; fin.required = on;
+      if (!on) fin.value = '';
+      if (list) { list.innerHTML = ''; (INLAND[iso()] || []).forEach(function (v) { var o = document.createElement('option'); o.value = v; list.appendChild(o); }); }
+      if (route) route.textContent = it && it.corridor ? route.getAttribute('data-tpl').replace('{port}', it.label).replace('{country}', country.value).replace('{corridor}', it.corridor) : '';
     }
     fill();
-    var pk = makePicker(sel, { full: true, items: items, btn: function (x) { return x.label; },
+    var pk = makePicker(sel, { full: true, items: items, btn: function (x) { return x.label + (x.right ? ', ' + x.right : ''); },
       disabled: function () { return !country || !country.value; }, phIso: iso,
       ph: function () { return country && country.value ? attr(sel, 'data-ph', 'Select port…') : attr(sel, 'data-first', 'Choose the country first'); } });
     if (country) country.addEventListener('change', function () {
       fill();
-      var only = country.value === OTHER || !PORTS[iso()];
+      var i = iso();
+      var only = country.value === OTHER || (!(PORTS[i] || []).length && !(TRANSIT[i] || []).length);
       if (only) sel.value = OTHER;
       toggleOther(other, sel.value === OTHER);
+      transit();
       pk.paint();
     });
-    sel.addEventListener('change', function () { toggleOther(other, sel.value === OTHER); if (sel.value === OTHER) other.focus(); });
-    if (form) form.addEventListener('reset', function () { setTimeout(function () { fill(); toggleOther(other, false); pk.paint(); }, 0); });
+    sel.addEventListener('change', function () { toggleOther(other, sel.value === OTHER); transit(); if (sel.value === OTHER) other.focus(); });
+    if (form) form.addEventListener('reset', function () { setTimeout(function () { fill(); toggleOther(other, false); transit(); pk.paint(); }, 0); });
   });
   document.querySelectorAll('form').forEach(function (form) {
     form.addEventListener('reset', function () {

@@ -133,7 +133,7 @@
       'RFQ No.: ' + ref,
       'Product: ' + (data.get('commodity') || '-') + (data.get('grade') ? ' (' + data.get('grade') + ')' : ''),
       'Quantity: ' + (data.get('quantity') || '-'),
-      'Destination: ' + [port, country].filter(Boolean).join(', '),
+      'Destination: ' + (/\(transit\)$/.test(port || '') ? port + ' -> ' + [data.get('final_dest'), country].filter(Boolean).join(', ') : [port, country].filter(Boolean).join(', ')),
       'Incoterm: ' + (data.get('incoterm') || '-'),
       'Company: ' + (data.get('name') || '-')];
     return 'https://wa.me/' + WA + '?text=' + encodeURIComponent(lines.join('\n'));

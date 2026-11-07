@@ -12,9 +12,17 @@ const NOTIFY_EMAIL = 'info@bhumivarahiimpex.com';
 const HEADERS = ['Received', 'RFQ No.', 'Company / Buyer', 'Email', 'Phone / WhatsApp', 'Country',
                  'Commodity', 'Quantity', 'Specs & notes', 'Status', 'Notes (internal)',
                  'Contact person', 'Grade / type', 'Destination port', 'Incoterm', 'Packing', 'Bag branding',
-                 'Shipment', 'Payment terms', 'Target price (USD/MT)', 'Sample needed'];
-// Form fields stored in columns 12-21, in this order (added Nov 2026).
-const EXTRA_FIELDS = ['contact', 'grade', 'port', 'incoterm', 'packing', 'label', 'shipment', 'payment', 'price', 'sample'];
+                 'Shipment', 'Payment terms', 'Target price (USD/MT)', 'Sample needed', 'Final destination (inland)'];
+// Form fields stored in columns 12-22, in this order (added Nov 2026).
+const EXTRA_FIELDS = ['contact', 'grade', 'port', 'incoterm', 'packing', 'label', 'shipment', 'payment', 'price', 'sample', 'final_dest'];
+
+// "Dar es Salaam, Tanzania (transit) -> Kigali (Masaka ICD), Rwanda" for landlocked buyers, else "Jebel Ali, United Arab Emirates".
+function destText_(p) {
+  const port = String(p.port || '');
+  if (/\(transit\)$/.test(port) || p.final_dest) return [port, [p.final_dest, p.country].filter(Boolean).join(', ')].filter(Boolean).join(' -> ');
+  return [port, p.country].filter(Boolean).join(', ');
+}
+function portName_(p) { return String(p.port || '').replace(/\s*\(transit\)$/, '').split(',')[0].trim(); }
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
@@ -122,7 +130,7 @@ function notify_(p) {
     <div style="background:#1B4D3E;color:#E5C158;padding:14px 18px;font-weight:bold;letter-spacing:1px;">NEW REQUEST FOR QUOTATION</div>
     <table style="border-collapse:collapse;font-size:14px;margin:10px 6px;">
       ${row('RFQ No.', p.ref)}${row('Company / Buyer', p.name)}${row('Email', p.email)}${row('Phone / WhatsApp', p.phone)}
-      ${row('Contact person', p.contact)}${row('Country', p.country)}${row('Destination port', p.port)}
+      ${row('Contact person', p.contact)}${row('Country', p.country)}${row('Destination port', p.port)}${p.final_dest ? row('Final destination (inland)', p.final_dest) : ''}
       ${row('Commodity', p.commodity)}${row('Grade / type', p.grade)}${row('Quantity', p.quantity)}${row('Incoterm', p.incoterm)}
       ${row('Packing', p.packing)}${row('Bag branding', p.label)}${row('Shipment', p.shipment)}${row('Payment terms', p.payment)}
       ${row('Target price (USD/MT)', p.price)}${row('Sample needed', p.sample)}
@@ -157,7 +165,7 @@ function acknowledge_(p) {
       <div style="background:#F8F5EC;border-left:3px solid #C9A227;border-radius:4px;padding:8px 4px;margin:0 0 18px;">
         <div style="padding:4px 12px;font-size:12px;letter-spacing:1px;color:#8A6508;font-weight:bold;">YOUR REQUEST</div>
         <table style="border-collapse:collapse;font-size:14px;">
-          ${row('RFQ No.', p.ref)}${row('Company', p.name)}${row('Email / Phone', [p.email, p.phone].filter(Boolean).join('  |  '))}${row('Contact person', p.contact)}${row('Commodity', p.commodity)}${row('Grade / type', p.grade)}${row('Quantity', p.quantity)}${row('Destination', [p.port, p.country].filter(Boolean).join(', '))}${row('Incoterm', p.incoterm)}${row('Packing', p.packing)}${row('Bag branding', p.label)}${row('Shipment', p.shipment)}${row('Payment terms', p.payment)}${p.price ? row('Target price (USD/MT)', p.price) : ''}${p.sample ? row('Sample', p.sample) : ''}${row('Other specifications', p.notes)}
+          ${row('RFQ No.', p.ref)}${row('Company', p.name)}${row('Email / Phone', [p.email, p.phone].filter(Boolean).join('  |  '))}${row('Contact person', p.contact)}${row('Commodity', p.commodity)}${row('Grade / type', p.grade)}${row('Quantity', p.quantity)}${row('Destination', destText_(p))}${row('Incoterm', p.incoterm)}${row('Packing', p.packing)}${row('Bag branding', p.label)}${row('Shipment', p.shipment)}${row('Payment terms', p.payment)}${p.price ? row('Target price (USD/MT)', p.price) : ''}${p.sample ? row('Sample', p.sample) : ''}${row('Other specifications', p.notes)}
         </table>
       </div>
       <p style="margin:0 0 14px;font-size:13px;color:#5A6A72;">Please quote your RFQ No. <strong style="color:#1B4D3E;">${esc(p.ref)}</strong> in any reply, and you will find it on our quotation.</p>
@@ -169,7 +177,7 @@ function acknowledge_(p) {
       <a href="https://www.bhumivarahiimpex.com" style="color:#E5C158;text-decoration:none;">www.bhumivarahiimpex.com</a>
     </div>
   </div>`;
-  const text = `Dear ${p.contact || p.name || 'Sir / Madam'},\n\nThank you for your request for quotation. We have received it, and our export desk is now working on your quotation. We will be in touch as soon as the quotation is ready.\n\nRFQ No.: ${p.ref}\nCommodity: ${p.commodity || '-'}\nQuantity: ${p.quantity || '-'}\nDestination: ${[p.port, p.country].filter(Boolean).join(', ') || '-'}\nIncoterm: ${p.incoterm || '-'}\nPacking: ${p.packing || '-'}\n\nWarm regards,\nExport Desk, Bhumi Varahi Impex Pvt Ltd\n${NOTIFY_EMAIL} | WhatsApp +91 94929 92666 | www.bhumivarahiimpex.com`;
+  const text = `Dear ${p.contact || p.name || 'Sir / Madam'},\n\nThank you for your request for quotation. We have received it, and our export desk is now working on your quotation. We will be in touch as soon as the quotation is ready.\n\nRFQ No.: ${p.ref}\nCommodity: ${p.commodity || '-'}\nQuantity: ${p.quantity || '-'}\nDestination: ${destText_(p) || '-'}\nIncoterm: ${p.incoterm || '-'}\nPacking: ${p.packing || '-'}\n\nWarm regards,\nExport Desk, Bhumi Varahi Impex Pvt Ltd\n${NOTIFY_EMAIL} | WhatsApp +91 94929 92666 | www.bhumivarahiimpex.com`;
   sendMail_({
     to: email,
     replyTo: NOTIFY_EMAIL,
@@ -595,9 +603,9 @@ function quoteRow_(sheet, row, price, send) {
   const valid = new Date(today.getTime() + QUOTE_VALID_DAYS * 864e5);
   const mt = quantityMt_(p.quantity);
   const money = n => 'USD ' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  const dest = [p.port, p.country].filter(Boolean).join(', ');
+  const dest = destText_(p);
   const term = (String(p.incoterm).match(/^(FOB|CFR|CIF|FCA|EXW|CPT|CIP|DAP|DDP)\b/i) || [])[1];
-  const basis = term ? term.toUpperCase() + ' ' + (/^(FOB|FCA|EXW)$/i.test(term) ? 'Indian port' : (p.port || p.country)) : '';
+  const basis = term ? term.toUpperCase() + ' ' + (/^(FOB|FCA|EXW)$/i.test(term) ? 'Indian port' : (portName_(p) || p.country)) : '';
 
   const doc = DocumentApp.create(quoteNo + ' ' + (p.name || 'Buyer'));
   const body = doc.getBody();
@@ -853,7 +861,7 @@ function costingRow_(sheet, row, millPer100kg, mt, cfg) {
   const usd = n => (n < 0 ? '-' : '') + 'USD ' + Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   const fmt = d => Utilities.formatDate(d, 'Asia/Kolkata', 'dd MMM yyyy');
   const GREEN = '#1B4D3E', GOLD = '#8A6508', GREY = '#5A6A72', CREAM = '#F8F5EC';
-  const dest = [p.port, p.country].filter(Boolean).join(', ') || '-';
+  const dest = destText_(p) || '-';
 
   const doc = DocumentApp.create(costNo + ' INTERNAL ' + (p.name || 'Buyer'));
   const body = doc.getBody();
@@ -903,9 +911,10 @@ function costingRow_(sheet, row, millPer100kg, mt, cfg) {
     ['Origin / mill', millLoc + (km ? ' (about ' + km + ' km to CFS)' : '')],
     ['CHA / CFS', cha],
     ['Port of loading', pol],
-    ['Buyer destination', dest],
+    ['Port of discharge', p.port ? String(p.port).replace(/\s*\(transit\)$/, '') + (/\(transit\)$/.test(p.port) ? ' (transit port)' : '') : '-'],
+  ].concat(p.final_dest ? [['Final destination', p.final_dest + ', ' + p.country + ' (overland, bonded transit)']] : [['Destination country', p.country || '-']]).concat([
     ['Buyer asked for', ['Incoterm: ' + (p.incoterm || '-'), 'Payment: ' + (p.payment || '-'), 'Shipment: ' + (p.shipment || '-'), 'Packing: ' + (p.packing || '-'), 'Branding: ' + (p.label || '-')].join('\n')],
-  ].concat(p.price ? [['Buyer target price', 'USD ' + p.price + ' / MT']] : []).concat(p.notes && p.notes !== 'None' ? [['Buyer specifications', p.notes]] : []),
+  ]).concat(p.price ? [['Buyer target price', 'USD ' + p.price + ' / MT']] : []).concat(p.notes && p.notes !== 'None' ? [['Buyer specifications', p.notes]] : []),
   { head: false, widths: [120, 390] });
 
   heading('2. Cost build-up: mill to ship\'s rail (FOB)');
@@ -922,7 +931,7 @@ function costingRow_(sheet, row, millPer100kg, mt, cfg) {
     ['Contract value', usd(c.fobUsd) + ' for ' + mt + ' MT, FOB ' + pol],
   ].concat(p.price ? [['Buyer target', 'USD ' + p.price + ' / MT  (' + (Number(p.price) >= c.fobUsdPerMt ? 'at or above our FOB price' : 'BELOW our FOB price by ' + usd(c.fobUsdPerMt - Number(p.price)) + ' / MT') + ')']] : []),
   { head: false, widths: [120, 390] });
-  if (/^(CFR|CIF)/i.test(p.incoterm)) para('The buyer asked for ' + p.incoterm + '. Add ocean freight to ' + (p.port || p.country) + (/^CIF/i.test(p.incoterm) ? ' and marine insurance' : '') + ' before quoting; the figures above are FOB only.', { size: 9, bold: true, color: GOLD });
+  if (/^(CFR|CIF)/i.test(p.incoterm)) para('The buyer asked for ' + p.incoterm + '. Add ocean freight to ' + (portName_(p) || p.country) + (/^CIF/i.test(p.incoterm) ? ' and marine insurance' : '') + ' before quoting; the figures above are FOB only.', { size: 9, bold: true, color: GOLD });
 
   heading('4. Exporter net return');
   table([
@@ -1043,7 +1052,7 @@ function setGeminiKey() {
 }
 
 function researchPrompt_(p, c, o) {
-  const dest = [p.port, p.country].filter(Boolean).join(', ') || 'the buyer\'s country';
+  const dest = destText_(p) || 'the buyer\'s country';
   return [
     'You are an export analyst for Bhumi Varahi Impex Pvt Ltd, an Indian agri-commodity exporter. Research this consignment using Google Search and current, official sources where possible.',
     '',
@@ -1060,7 +1069,7 @@ function researchPrompt_(p, c, o) {
     '### Destination market prices',
     '- Current wholesale and retail price ranges in local currency and converted to USD per MT, with the exchange rate used.',
     '### Buyer landed cost and margin',
-    '- Starting from our FOB price, estimate ocean freight per 20 ft container from ' + o.pol + ' to ' + (p.port || 'the nearest main port') + ', insurance, destination port and inland charges, and duty, giving a landed cost per MT. Compare it with the wholesale price and give the buyer\'s estimated margin per MT and per container. Show the calculation.',
+    '- Starting from our FOB price, estimate ocean freight per 20 ft container from ' + o.pol + ' to ' + (portName_(p) || 'the nearest main port') + ', insurance, destination port charges' + (p.final_dest ? ', transit clearance and overland trucking to ' + p.final_dest : ' and inland charges') + ', and duty, giving a landed cost per MT. Compare it with the wholesale price and give the buyer\'s estimated margin per MT and per container. Show the calculation.',
     '### Risks and notes',
     '- Anything that could stop or delay the shipment, or change the price (for example policy changes, seasonality, currency).',
     '',

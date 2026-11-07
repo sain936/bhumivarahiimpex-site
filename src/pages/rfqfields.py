@@ -7,6 +7,7 @@ e = html.escape
 
 T = {
  'en': dict(
+   port_transit='Discharge / transit port', final_dest='Final inland destination', ph_final='e.g. Kigali (Masaka ICD)', transit_group='Transit ports (overland)', sea_group='Sea ports', route_tpl='Overland from {port} to {country} via the {corridor}.',
    optional='(optional)', sel_country='Select country…', sel_port='Select port…', port_first='Choose the country first',
    other_country='Other country', other_port='Other port', ph_country_other='Type the country name', ph_port_other='Type the port name',
    search_country='Search country', search_port='Search port',
@@ -27,6 +28,7 @@ T = {
    price='Target price (USD per MT)', ph_price='e.g. 950', sample='Sample needed?', sample_o=['Yes, please send a sample', 'No'],
  ),
  'ar': dict(
+   port_transit='ميناء التفريغ / العبور', final_dest='الوجهة النهائية الداخلية', ph_final='مثال: كيغالي (ميناء ماساكا الجاف)', transit_group='موانئ العبور (نقل بري)', sea_group='الموانئ البحرية', route_tpl='نقل بري من {port} إلى {country} عبر {corridor}.',
    optional='(اختياري)', sel_country='اختر الدولة…', sel_port='اختر الميناء…', port_first='اختر الدولة أولاً',
    other_country='دولة أخرى', other_port='ميناء آخر', ph_country_other='اكتب اسم الدولة', ph_port_other='اكتب اسم الميناء',
    search_country='ابحث عن دولة', search_port='ابحث عن ميناء',
@@ -47,6 +49,7 @@ T = {
    price='السعر المستهدف (دولار للطن)', ph_price='مثال: 950', sample='هل تحتاجون عينة؟', sample_o=['نعم، أرسلوا عينة', 'لا'],
  ),
  'fr': dict(
+   port_transit='Port de déchargement / transit', final_dest='Destination finale (intérieur)', ph_final='ex. Kigali (port sec de Masaka)', transit_group='Ports de transit (voie terrestre)', sea_group='Ports maritimes', route_tpl='Transport terrestre de {port} vers {country} via le {corridor}.',
    optional='(facultatif)', sel_country='Choisir un pays…', sel_port='Choisir un port…', port_first='Choisissez d’abord le pays',
    other_country='Autre pays', other_port='Autre port', ph_country_other='Saisissez le nom du pays', ph_port_other='Saisissez le nom du port',
    search_country='Rechercher un pays', search_port='Rechercher un port',
@@ -112,10 +115,13 @@ def render(lang, product_groups, group_names, lab):
                f'<select id="country" name="country" required data-country-picker data-ph="{e(t["sel_country"])}" data-other="{e(t["other_country"])}" data-search="{e(t["search_country"])}" data-none="{e(dz["none"])}" data-top-label="{e(dz["top"])}" data-all-label="{e(dz["all"])}" class="{SEL}">'
                f'<option value="" disabled selected>{e(t["sel_country"])}</option></select></div>'
                f'<input type="text" name="country_other" hidden maxlength="80" placeholder="{e(t["ph_country_other"])}" aria-label="{e(t["ph_country_other"])}" class="mt-2 {INP}" /></div>')
-    port = (f'<div>{L("port", "port")}<div class="relative">'
-            f'<select id="port" name="port" required data-port-picker data-ph="{e(t["sel_port"])}" data-first="{e(t["port_first"])}" data-other="{e(t["other_port"])}" data-search="{e(t["search_port"])}" data-none="{e(dz["none"])}" class="{SEL}">'
+    port = (f'<div><label for="port" class="{lab}"><span data-port-label data-std="{e(t["port"])}" data-transit="{e(t["port_transit"])}">{e(t["port"])}</span>{star}</label><div class="relative">'
+            f'<select id="port" name="port" required data-port-picker data-ph="{e(t["sel_port"])}" data-first="{e(t["port_first"])}" data-other="{e(t["other_port"])}" data-search="{e(t["search_port"])}" data-none="{e(dz["none"])}" data-transit-label="{e(t["transit_group"])}" data-sea-label="{e(t["sea_group"])}" class="{SEL}">'
             f'<option value="" disabled selected>{e(t["port_first"])}</option></select></div>'
             f'<input type="text" name="port_other" hidden maxlength="80" placeholder="{e(t["ph_port_other"])}" aria-label="{e(t["ph_port_other"])}" class="mt-2 {INP}" /></div>')
+    final = (f'<div data-final-wrap hidden class="sm:col-span-2 rounded-lg border border-brand-warmGold/30 bg-brand-warmGold/5 p-4">'
+             f'{L("finalDest", "final_dest")}<input type="text" id="finalDest" name="final_dest" list="finalDestList" maxlength="120" autocomplete="off" placeholder="{e(t["ph_final"])}" class="{INP}" />'
+             f'<datalist id="finalDestList"></datalist><p data-route data-tpl="{e(t["route_tpl"])}" class="mt-2 text-xs text-emerald-100/90"></p></div>')
     G = lambda *xs: '<div class="grid grid-cols-1 sm:grid-cols-2 gap-5">' + ''.join(xs) + '</div>'
     notes = f'<div>{L("rfqNotes", "notes")}<textarea id="rfqNotes" name="notes" rows="3" required placeholder="{e(t["ph_notes"])}" class="{INP}"></textarea></div>'
     steps = [
@@ -130,7 +136,7 @@ def render(lang, product_groups, group_names, lab):
           select('bagLabel', 'label', 'label', 'label_o'),
           select('sample', 'sample', 'sample', 'sample_o', opt=True),
           text('targetPrice', 'price', 'price', t['ph_price'], opt=True, extra=' inputmode="decimal" maxlength="40" dir="ltr"')),
-        G(country, port,
+        G(country, port, final,
           select('incoterm', 'incoterm', 'incoterm', 'incoterm_o'),
           select('shipment', 'shipment', 'shipment', 'shipment_o'),
           select('payment', 'payment', 'payment', 'payment_o')) + notes,
