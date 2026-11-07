@@ -499,7 +499,8 @@ function isDate_(v) { return Object.prototype.toString.call(v) === '[object Date
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Bhumi Varahi')
     .addItem('Resend buyer email (selected row)', 'resendAcknowledgement')
-    .addItem('Create internal costing (selected row)', 'createInternalCosting')
+    .addItem('Prepare internal costing inputs (selected row)', 'prepareCostingInputs')
+    .addItem('Create internal costing (selected row or IC tab)', 'createInternalCosting')
     .addItem('Set Gemini API key (for costing research)', 'setGeminiKey')
     .addItem('Create quotation PDF (selected row)', 'createQuotation')
     .addItem('Send today\'s follow-ups now', 'dailyDigest')
@@ -707,27 +708,50 @@ function quoteRow_(sheet, row, price, send) {
 }
 
 // ===== INTERNAL COSTING DOSSIER =====
-// Bhumi Varahi -> Create internal costing (selected row) builds an INTERNAL cost sheet
-// (never sent to the buyer): cost build-up from mill to ship's rail, margin, FOB price,
-// exporter net return, payment rules, document checklists, execution roadmap and sign-off.
-// Rates live in two tabs you can edit at any time: "Cost Settings" and "Cost Rates".
+// Step 1: click an RFQ row, Bhumi Varahi -> Prepare internal costing inputs. A tab "IC <RFQ No.>"
+//         opens with every input the costing needs, pre-filled from the RFQ and your defaults.
+//         Yellow cells are required. Cost lines at the bottom can be changed for this deal only.
+// Step 2: Bhumi Varahi -> Create internal costing (from that tab or the RFQ row). It checks the
+//         required cells, then builds the confidential dossier (Doc + PDF in Drive). Never emailed.
+// Company-wide defaults live in "Cost Settings" (rates, bank, licence status) and "Cost Rates".
 const COST_SETTINGS_TAB = 'Cost Settings';
 const COST_RATES_TAB = 'Cost Rates';
 const COSTING_FOLDER = 'Bhumi Varahi Internal Costing';
+const IC_PREFIX = 'IC ';
 const COST_SETTINGS_DEFAULT = [
   ['USD rate (INR per 1 USD)', 94.85],
   ['MT per 20 ft container', 25],
   ['Margin (% of cargo cost)', 10],
+  ['GST on logistics services (%)', 18],
   ['Default mill price (INR per 100 kg)', 3750],
-  ['Port of loading', 'Visakhapatnam Port (VCTPL)'],
-  ['CHA / CFS partner', 'Sree Shipping & Logistics'],
+  ['Mill name', ''],
   ['Mill / origin', 'Jaggampeta, East Godavari, A.P.'],
   ['Inland distance (km)', 170],
+  ['Port of loading', 'Visakhapatnam Port (VCTPL)'],
+  ['CHA / CFS partner', 'Sree Shipping & Logistics'],
   ['Quotation validity (days)', 7],
   ['Gemini research (Y/N)', 'Y'],
   ['Gemini model', 'gemini-3.8-flash'],
+  // Bank details: printed on the internal costing only when filled in.
+  ['Bank: account name', 'Bhumi Varahi Impex Private Limited'],
+  ['Bank: bank name', ''],
+  ['Bank: branch', ''],
+  ['Bank: account number', ''],
+  ['Bank: AD code', ''],
+  ['Bank: IFSC', ''],
+  ['Bank: SWIFT / BIC', ''],
+  ['Bank: remittance purpose code', 'P0102 (export of food commodities)'],
+  // Registration status: type Active, Pending, Applied or Not needed, plus the number once you have it.
+  ['Licence: IEC (DGFT)', 'In progress'],
+  ['Licence: GST registration + LUT', 'In progress'],
+  ['Licence: AD code registered at port', 'In progress'],
+  ['Licence: ICEGATE registration', 'In progress'],
+  ['Licence: APEDA RCMC', 'In progress'],
+  ['Licence: APEDA RCAC (non-basmati rice allocation)', 'In progress'],
+  ['Licence: FSSAI', 'In progress'],
+  ['Licence: Plant quarantine (PQIS) login', 'In progress'],
 ];
-// Item | Basis shown on the sheet | Rate (INR) | Per (MT / bag / container / shipment) | GST 18% (Y/N) | Include (Y/N)
+// Item | Basis shown on the sheet | Rate (INR) | Per (MT / bag / container / shipment) | GST (Y/N) | Include (Y/N)
 const COST_RATES_DEFAULT = [
   ['New export jute bags', 'Export-grade virgin jute bag', 65, 'bag', 'N', 'Y'],
   ['CFS rebagging & stitching', 'Per bag at CFS', 18, 'bag', 'N', 'Y'],
@@ -739,11 +763,108 @@ const COST_RATES_DEFAULT = [
   ['Fumigation upgrade (MBR 48 g)', 'Methyl bromide 48 g/m3', 2600, 'container', 'N', 'Y'],
   ['Container weighment (VGM)', 'Certified tare / gross weight', 450, 'container', 'Y', 'Y'],
   ['Terminal handling charges (origin THC)', 'Per 20 ft box', 8500, 'container', 'N', 'Y'],
+  ['Lo-Lo charges (lift on / lift off, origin)', 'Container lift on / lift off at CFS, ICD or yard. Enter the CHA / CFS rate.', '', 'container', 'Y', 'Y'],
   ['Certificate of Origin (COO)', 'Non-preferential COO, chamber seal', 1500, 'shipment', 'N', 'Y'],
   ['Destination pre-shipment inspection (PVoC / CoC)', 'Only for countries that require it (e.g. Rwanda, Kenya)', 38000, 'shipment', 'N', 'N'],
   ['Banking, courier & e-BRC / EDPMS', 'Bank document handling, courier, RBI closure', 4500, 'shipment', 'N', 'Y'],
   ['Warehouse storage handling', 'Only if cargo is staged in the CFS warehouse', 125, 'MT', 'N', 'N'],
   ['Empty container off-dock pickup', 'Only if the carrier names an outside yard', 2500, 'container', 'N', 'N'],
+  ['CTO & SRF charges (carrier, at actuals)', 'Terminal operator tolls and shipping request fee', 2500, 'container', 'N', 'N'],
+  ['Demurrage beyond free time', 'INR 2,000 per week per box beyond 14 free days', 2000, 'container', 'N', 'N'],
+];
+
+// Every manual input of the internal costing: [key, label, required, help]. '#' rows are section headings.
+// Defaults and RFQ pre-fill come from icDefaults_().
+const IC_FIELDS = [
+  ['#', '1. Deal and buyer'],
+  ['buyer', 'Buyer company', true, 'From the RFQ'],
+  ['contact', 'Contact person', false, ''],
+  ['buyer_country', 'Buyer country', true, ''],
+  ['buyer_address', 'Buyer registered address', false, 'Needed for the proforma and B/L'],
+  ['buyer_tin', 'Buyer tax ID (TIN / VAT no.)', false, 'Ask the buyer'],
+  ['commodity', 'Commodity', true, ''],
+  ['variety', 'Variety / grade', false, 'e.g. 1010, IR 64, 1121 Steam'],
+  ['crop_year', 'Crop year', false, ''],
+  ['hs_code', 'HS code', false, 'e.g. 1006.30 milled rice, 0910.30 turmeric'],
+  ['qty_mt', 'Quantity (MT)', true, 'Number only'],
+  ['bag_kg', 'Bag size (kg)', true, 'Number only'],
+  ['bag_type', 'Bag type', false, 'Jute / PP / BOPP / non-woven'],
+  ['branding', 'Bag branding', false, ''],
+  ['incoterm', 'Incoterm asked by buyer', false, 'Costing is always FOB; CFR/CIF need freight added'],
+  ['payment_option', 'Payment structure', true, 'A: 30% advance + 70% against BL copy, or B: 100% confirmed sight L/C'],
+  ['shipment_window', 'Shipment window', false, ''],
+  ['validity_days', 'Quote validity (days)', true, ''],
+  ['#', '2. Quality specification'],
+  ['q_moisture', 'Moisture (max)', false, ''],
+  ['q_broken', 'Broken grains (max)', false, ''],
+  ['q_fm_inorg', 'Foreign matter, inorganic (max)', false, ''],
+  ['q_fm_org', 'Foreign matter, organic (max)', false, ''],
+  ['q_damaged', 'Damaged / discoloured / chalky (max)', false, ''],
+  ['q_milling', 'Milling degree & polish', false, ''],
+  ['q_aflatoxin', 'Aflatoxin', false, ''],
+  ['q_heavy', 'Heavy metals (Pb / Cd)', false, ''],
+  ['q_other', 'Other quality terms', false, 'Grain length, purity, colour, crop, etc.'],
+  ['q_dest_std', 'Destination standard', false, 'e.g. EAS 128:2017 (Rwanda), GSO (Gulf)'],
+  ['#', '3. Procurement (origin)'],
+  ['mill_name', 'Mill / supplier name', false, ''],
+  ['mill_location', 'Mill location', true, ''],
+  ['mill_price', 'Mill price (INR per 100 kg)', true, 'Number only'],
+  ['inland_km', 'Mill to CFS distance (km)', false, ''],
+  ['lorry', 'Inland transport', false, ''],
+  ['#', '4. Origin shipping'],
+  ['cha', 'CHA / CFS partner', true, ''],
+  ['pol', 'Port of loading', true, 'e.g. Visakhapatnam (VCTPL), Gangavaram, Kakinada'],
+  ['container_type', 'Container type', false, ''],
+  ['mt_per_ctr', 'MT per container', true, 'Number only; containers are worked out from this'],
+  ['shipping_line', 'Shipping line / booking', false, 'Buyer-nominated or ours'],
+  ['stuffing', 'Stuffing method', false, ''],
+  ['#', '5. Destination and route'],
+  ['pod', 'Port of discharge', true, ''],
+  ['final_dest', 'Final inland destination', false, 'Only for landlocked buyers, e.g. Kigali (Masaka ICD)'],
+  ['corridor', 'Overland corridor', false, 'e.g. Central Corridor (Dar es Salaam - Kigali)'],
+  ['transit_regime', 'Transit regime', false, 'e.g. EAC bonded transit (T1) with ECTS seals'],
+  ['dest_inspection', 'Destination inspection / certificate', false, 'e.g. PVoC CoC by SGS / Cotecna'],
+  ['consignee', 'Consignee (exact B/L wording)', false, ''],
+  ['notify_party', 'Notify party', false, ''],
+  ['clearing_agent', 'Buyer clearing agent', false, ''],
+  ['import_permit', 'Import declaration / permit no.', false, 'e.g. Rwanda IDF on ReSW'],
+  ['#', '6. Money and margin'],
+  ['fx', 'USD rate (INR per USD)', true, 'Number only'],
+  ['margin_pct', 'Margin (% of cargo cost)', true, 'Number only'],
+  ['gst_pct', 'GST on logistics services (%)', true, 'Number only'],
+  ['#', '7. Buyer landed cost (USD; leave freight empty to skip this section)'],
+  ['b_freight', 'Ocean freight per container (USD)', false, 'Shipping line quote'],
+  ['b_local', 'Carrier local charges per container (USD)', false, 'B/L, seal, ISPS'],
+  ['b_ins_pct', 'Marine insurance (% of CFR value)', false, 'Leave empty if not counted'],
+  ['b_port', 'Destination port / transit clearance per container (USD)', false, 'Wharfage, handling'],
+  ['b_lolo', 'Destination Lo-Lo (lift on / lift off) per container (USD)', false, 'At port, ICD or dry port; enter 0 if included above'],
+  ['b_inland', 'Overland trucking per container (USD)', false, 'Port to final destination'],
+  ['b_bond', 'Transit bond / cargo tracking per container (USD)', false, ''],
+  ['b_duty_pct', 'Import duty (% of CIF)', false, ''],
+  ['b_duty_min', 'Minimum duty (USD per MT)', false, 'If the tariff says "or USD x/MT, whichever is higher"'],
+  ['b_clear', 'Import clearing & dry port handling per container (USD)', false, ''],
+  ['b_vat_pct', 'Import VAT / levies (% of CIF + duty)', false, 'Leave empty if exempt or recoverable'],
+  ['b_sell', 'Buyer wholesale selling price (USD per MT)', false, 'For the buyer profit estimate'],
+  ['local_ccy', 'Local currency code', false, 'e.g. RWF, AED, KES'],
+  ['local_fx', 'Local currency per 1 USD', false, ''],
+  ['#', '8. Contract clauses'],
+  ['balance_days', 'Balance payment due (business days after BL scan)', false, ''],
+  ['moisture_tol', 'Transit moisture tolerance', false, ''],
+  ['payload', 'Container payload rating', false, ''],
+  ['forex_recal', 'Re-price if INR strengthens by more than (%)', false, ''],
+  ['free_days', 'CFS free time (days)', false, ''],
+  ['demurrage', 'Demurrage after free time', false, ''],
+  ['#', '9. Timeline'],
+  ['t_procure', 'Procurement & haulage (days)', false, ''],
+  ['t_cfs', 'CFS rebagging & stuffing (days)', false, ''],
+  ['t_cha', 'CHA clearance & gate-in (days)', false, ''],
+  ['t_ready', 'Total cargo readiness (days)', false, ''],
+  ['t_sea', 'Sea transit to port of discharge (days)', false, ''],
+  ['t_inland', 'Overland transit to final destination (days)', false, ''],
+  ['#', '10. Approvals'],
+  ['appr_costing', 'Costing & pricing verified by', false, 'Name'],
+  ['appr_logistics', 'Logistics & CHA cleared by', false, 'Name'],
+  ['appr_director', 'Final commercial sign-off by', false, 'Name'],
 ];
 
 function setupCosting_() {
@@ -753,21 +874,31 @@ function setupCosting_() {
     st = ss.insertSheet(COST_SETTINGS_TAB);
     st.getRange(1, 1, 1, 2).setValues([['Setting', 'Value']]).setFontWeight('bold').setBackground('#1B4D3E').setFontColor('#FFFFFF');
     st.getRange(2, 1, COST_SETTINGS_DEFAULT.length, 2).setValues(COST_SETTINGS_DEFAULT);
-    st.setColumnWidth(1, 260); st.setColumnWidth(2, 260); st.setFrozenRows(1);
+    st.setColumnWidth(1, 300); st.setColumnWidth(2, 300); st.setFrozenRows(1);
   }
   let rt = ss.getSheetByName(COST_RATES_TAB);
   if (!rt) {
     rt = ss.insertSheet(COST_RATES_TAB);
-    rt.getRange(1, 1, 1, 6).setValues([['Cost item', 'Basis / what it covers', 'Rate (INR)', 'Per (MT / bag / container / shipment)', 'GST 18% (Y/N)', 'Include (Y/N)']])
+    rt.getRange(1, 1, 1, 6).setValues([['Cost item', 'Basis / what it covers', 'Rate (INR)', 'Per (MT / bag / container / shipment)', 'GST (Y/N)', 'Include (Y/N)']])
       .setFontWeight('bold').setBackground('#1B4D3E').setFontColor('#FFFFFF');
     rt.getRange(2, 1, COST_RATES_DEFAULT.length, 6).setValues(COST_RATES_DEFAULT);
     rt.setColumnWidths(1, 6, 190); rt.setColumnWidth(2, 320); rt.setFrozenRows(1);
   }
   const settings = {};
   st.getRange(2, 1, Math.max(1, st.getLastRow() - 1), 2).getValues().forEach(r => { if (r[0]) settings[String(r[0]).trim()] = r[1]; });
-  const rates = rt.getRange(2, 1, Math.max(1, rt.getLastRow() - 1), 6).getValues()
-    .filter(r => r[0] && Number(r[2]) > 0)
-    .map(r => ({ item: String(r[0]), basis: String(r[1] || ''), rate: Number(r[2]), per: String(r[3] || 'shipment').toLowerCase().trim(),
+  // Settings added in later versions are appended to older sheets.
+  const missing = COST_SETTINGS_DEFAULT.filter(d => !(d[0] in settings));
+  if (missing.length) {
+    st.getRange(st.getLastRow() + 1, 1, missing.length, 2).setValues(missing);
+    missing.forEach(d => { settings[d[0]] = d[1]; });
+  }
+  let rateRows = rt.getRange(2, 1, Math.max(1, rt.getLastRow() - 1), 6).getValues();
+  const have = rateRows.map(r => String(r[0]).trim());
+  const newItems = COST_RATES_DEFAULT.filter(d => have.indexOf(d[0]) < 0 && /^(Lo-Lo|CTO|Demurrage)/.test(d[0]));
+  if (newItems.length) { rt.getRange(rt.getLastRow() + 1, 1, newItems.length, 6).setValues(newItems); rateRows = rateRows.concat(newItems); }
+  const rates = rateRows
+    .filter(r => r[0] && (r[2] === '' || r[2] == null || Number(r[2]) >= 0))
+    .map(r => ({ item: String(r[0]), basis: String(r[1] || ''), rate: r[2] === '' || r[2] == null ? null : Number(r[2]), per: String(r[3] || 'shipment').toLowerCase().trim(),
                  gst: /^y/i.test(String(r[4])), include: !/^n/i.test(String(r[5])) }));
   return { settings, rates };
 }
@@ -777,9 +908,16 @@ function setting_(s, name, dflt) {
   return v === undefined || v === '' ? dflt : v;
 }
 
+function num_(v) {
+  if (typeof v === 'number') return v;
+  const n = parseFloat(String(v || '').replace(/,/g, '').replace(/[^0-9.\-]/g, ''));
+  return isNaN(n) ? null : n;
+}
+
 // Pure calculation (no Google services), so it can be checked against the sample dossier.
 function computeCosting_(o) {
   const fx = Number(o.fx), mt = Number(o.mt), bagKg = Number(o.bagKg) || 50;
+  const gstPct = o.gstPct == null ? 18 : Number(o.gstPct);
   const containers = Math.max(1, Math.ceil(mt / (Number(o.containerMt) || 25) - 1e-9));
   const bags = Math.ceil(mt * 1000 / bagKg);
   const qty = { mt: mt, bag: bags, container: containers, shipment: 1 };
@@ -787,14 +925,14 @@ function computeCosting_(o) {
   const lines = [{ item: 'Base cargo: ' + o.commodity, basis: o.mill + ': ' + mt + ' MT @ INR ' + o.millPer100kg + ' / 100 kg',
                    inr: r2(mt * 10 * o.millPer100kg) }];
   let gstBase = 0;
-  o.rates.filter(x => x.include).forEach(x => {
+  o.rates.filter(x => x.include && x.rate != null).forEach(x => {
     const per = x.per.indexOf('bag') === 0 ? 'bag' : x.per.indexOf('cont') === 0 ? 'container' : (x.per === 'mt' || x.per.indexOf('ton') === 0) ? 'mt' : 'shipment';
     const n = qty[per];
     const inr = r2(n * x.rate);
     lines.push({ item: x.item, basis: x.basis + (per === 'shipment' ? '' : ' (' + n + ' ' + (per === 'mt' ? 'MT' : per + (n === 1 ? '' : 's')) + ' @ INR ' + x.rate + ')'), inr: inr });
     if (x.gst) gstBase += inr;
   });
-  if (gstBase > 0) lines.push({ item: 'GST on logistics services (18%)', basis: '18% on CFS / CHA taxable services (INR ' + gstBase.toFixed(2) + '), claimable as export input credit', inr: Math.round(gstBase * 0.18) });
+  if (gstBase > 0 && gstPct > 0) lines.push({ item: 'GST on logistics services (' + gstPct + '%)', basis: gstPct + '% on CFS / CHA taxable services (INR ' + gstBase.toFixed(2) + '), claimable as export input credit', inr: Math.round(gstBase * gstPct / 100) });
   lines.forEach(l => { l.usd = r2(l.inr / fx); });
   const cost = r2(lines.reduce((a, l) => a + l.inr, 0));
   const margin = r2(lines[0].inr * Number(o.marginPct) / 100);
@@ -803,52 +941,192 @@ function computeCosting_(o) {
            fobPerMt: r2(fob / mt), fobUsdPerMt: r2(fob / fx / mt), marginPerMt: r2(margin / mt), gstBase };
 }
 
-function createInternalCosting() {
-  const ui = SpreadsheetApp.getUi();
-  const sheet = SpreadsheetApp.getActiveSheet();
-  if (sheet.getName() !== SHEET_NAME) { ui.alert('Open the "' + SHEET_NAME + '" tab and click a cell in the RFQ row first.'); return; }
-  const row = sheet.getActiveRange().getRow();
-  if (row < 2) { ui.alert('Click a cell in an RFQ row (not the header) first.'); return; }
-  const cfg = setupCosting_();
-  const qtyText = String(sheet.getRange(row, 8).getValue() || '');
-  let mt = quantityMt_(qtyText);
-  if (!mt) {
-    const q = ui.prompt('Internal costing', 'The RFQ says "' + qtyText + '". How many MT should this costing use?', ui.ButtonSet.OK_CANCEL);
-    if (q.getSelectedButton() !== ui.Button.OK) return;
-    mt = parseFloat(String(q.getResponseText()).replace(/[^0-9.]/g, ''));
-    if (!(mt > 0)) { ui.alert('Please enter a quantity such as 25.'); return; }
+// Buyer's landed cost and profit, from our FOB value (USD) and the buyer-side inputs. Pure.
+// Returns null when no freight is entered.
+function computeBuyer_(fobUsd, mt, containers, b) {
+  const v = k => num_(b[k]) || 0;
+  if (!num_(b.b_freight)) return null;
+  const r2 = n => Math.round(n * 100) / 100;
+  const freight = v('b_freight') * containers, local = v('b_local') * containers;
+  const insurance = v('b_ins_pct') ? r2((fobUsd + freight) * v('b_ins_pct') / 100) : 0;
+  const cif = fobUsd + freight + local + insurance;
+  const port = v('b_port') * containers, lolo = v('b_lolo') * containers, inland = v('b_inland') * containers, bond = v('b_bond') * containers;
+  const preCustoms = cif + port + lolo + inland + bond;
+  const duty = r2(Math.max(cif * v('b_duty_pct') / 100, v('b_duty_min') * mt));
+  const clear = v('b_clear') * containers;
+  const vat = v('b_vat_pct') ? r2((cif + duty) * v('b_vat_pct') / 100) : 0;
+  const landed = preCustoms + duty + clear + vat;
+  const sell = v('b_sell') * mt;
+  const rows = [
+    ['FOB purchase price (our invoice)', fobUsd],
+    ['Ocean freight', freight],
+    ['Carrier local charges (B/L, seal, ISPS)', local],
+  ].concat(insurance ? [['Marine insurance (' + v('b_ins_pct') + '%)', insurance]] : [])
+   .concat([['CIF value at port of discharge', cif, 'sub']])
+   .concat(port ? [['Port / transit clearance and handling', port]] : [])
+   .concat(lolo ? [['Lo-Lo (lift on / lift off) at destination', lolo]] : [])
+   .concat(inland ? [['Overland trucking', inland]] : [])
+   .concat(bond ? [['Transit bond and cargo tracking', bond]] : [])
+   .concat([['Landed cost before customs', preCustoms, 'sub']])
+   .concat(duty ? [['Import duty (' + v('b_duty_pct') + '% of CIF' + (v('b_duty_min') ? ' or USD ' + v('b_duty_min') + '/MT, whichever is higher' : '') + ')', duty]] : [])
+   .concat(clear ? [['Import clearing and dry port handling', clear]] : [])
+   .concat(vat ? [['Import VAT / levies (' + v('b_vat_pct') + '%)', vat]] : [])
+   .concat([['Duty-paid landed cost', landed, 'total']]);
+  const out = { rows: rows.map(r => ({ label: r[0], total: r2(r[1]), perMt: r2(r[1] / mt), kind: r[2] || '' })),
+                cif: r2(cif), landed: r2(landed), landedPerMt: r2(landed / mt) };
+  if (sell) {
+    out.sell = r2(sell); out.sellPerMt = r2(v('b_sell'));
+    out.profit = r2(sell - landed); out.profitPerMt = r2((sell - landed) / mt); out.roi = r2((sell - landed) / landed * 100);
   }
-  const dflt = setting_(cfg.settings, 'Default mill price (INR per 100 kg)', 3750);
-  const ans = ui.prompt('Internal costing', 'Mill price in INR per 100 kg (quintal) for ' + mt + ' MT.\nLeave empty to use ' + dflt + '.\n\nOther rates come from the "' + COST_RATES_TAB + '" and "' + COST_SETTINGS_TAB + '" tabs.', ui.ButtonSet.OK_CANCEL);
-  if (ans.getSelectedButton() !== ui.Button.OK) return;
-  const txt = String(ans.getResponseText()).trim();
-  const mill = txt ? parseFloat(txt.replace(/[^0-9.]/g, '')) : Number(dflt);
-  if (!(mill > 0)) { ui.alert('Please enter a mill price such as 3750.'); return; }
-  ui.alert(costingRow_(sheet, row, mill, mt, cfg).message);
+  return out;
 }
 
-// Shared by the menu (and tests). Returns { message, costNo, pdfUrl, calc }.
-function costingRow_(sheet, row, millPer100kg, mt, cfg) {
+// Defaults for a new input tab: RFQ answers first, then Cost Settings, then the sample dossier's terms.
+function icDefaults_(p, S) {
+  const rice = /rice/i.test(p.commodity);
+  const port = String(p.port || '');
+  return {
+    buyer: p.name, contact: p.contact, buyer_country: p.country, commodity: p.commodity, variety: p.grade,
+    crop_year: Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy'), hs_code: rice ? (/basmati/i.test(p.commodity) ? '1006.30.20' : '1006.30.90') : '',
+    qty_mt: quantityMt_(p.quantity) || '', bag_kg: (String(p.packing).match(/(\d+(?:\.\d+)?)\s*kg/i) || [])[1] || 50,
+    bag_type: 'Export-grade virgin jute', branding: p.label, incoterm: p.incoterm,
+    payment_option: /l\/?c/i.test(p.payment) ? 'B: 100% irrevocable confirmed sight L/C' : 'A: 30% advance + 70% against BL copy',
+    shipment_window: p.shipment, validity_days: setting_(S, 'Quotation validity (days)', 7),
+    q_moisture: rice ? '13.5%' : '', q_broken: rice ? '5%' : '', q_fm_inorg: rice ? '0.1%' : '', q_fm_org: rice ? '0.4%' : '',
+    q_damaged: rice ? '1.5%' : '', q_milling: rice ? 'Well-milled, 100% sortexed, double polished' : '',
+    q_aflatoxin: 'Total B1+B2+G1+G2 < 4 ppb', q_heavy: 'Within WHO limits', q_other: p.notes && p.notes !== 'None' ? String(p.notes).replace(/^\[(AR|FR)\]\s*/, '') : '',
+    mill_name: setting_(S, 'Mill name', ''), mill_location: setting_(S, 'Mill / origin', ''),
+    mill_price: setting_(S, 'Default mill price (INR per 100 kg)', ''), inland_km: setting_(S, 'Inland distance (km)', ''),
+    lorry: 'Open lorry, mill direct to CFS', cha: setting_(S, 'CHA / CFS partner', ''), pol: setting_(S, 'Port of loading', ''),
+    container_type: "20 ft heavy-duty (30.48 MT payload)", mt_per_ctr: setting_(S, 'MT per 20 ft container', 25),
+    stuffing: 'Direct CFS stuffing', pod: port.replace(/\s*\(transit\)$/, ''), final_dest: p.final_dest || '',
+    transit_regime: /\(transit\)$/.test(port) ? 'Bonded transit to ' + p.country : '',
+    fx: setting_(S, 'USD rate (INR per 1 USD)', 94.85), margin_pct: setting_(S, 'Margin (% of cargo cost)', 10),
+    gst_pct: setting_(S, 'GST on logistics services (%)', 18), b_sell: p.price || '',
+    balance_days: 3, moisture_tol: '±0.75%', payload: '30.48 MT (20 ft heavy-tested)', forex_recal: 1.5, free_days: 14,
+    demurrage: 'INR 2,000 per week per box', t_procure: '2-3', t_cfs: '2', t_cha: '2', t_ready: '7-10', t_sea: '', t_inland: ''
+  };
+}
+
+function rfqFromRow_(sheet, row) {
   migrateRfqNo_(sheet);
   const r = sheet.getRange(row, 1, 1, HEADERS.length).getValues()[0];
-  const p = { ref: String(r[1] || ''), name: String(r[2] || ''), email: String(r[3] || ''), phone: String(r[4] || ''),
-              country: String(r[5] || ''), commodity: String(r[6] || 'Commodity'), quantity: String(r[7] || ''), notes: String(r[8] || '') };
+  const p = { ref: String(r[1] || ''), name: String(r[2] || ''), email: String(r[3] || '').trim(), phone: String(r[4] || ''),
+              country: String(r[5] || ''), commodity: String(r[6] || ''), quantity: String(r[7] || ''), notes: String(r[8] || '') };
   EXTRA_FIELDS.forEach((k, i) => { p[k] = String(r[11 + i] || ''); });
   if (!p.ref) {
     p.ref = 'BV-' + Utilities.formatDate(isDate_(r[0]) ? r[0] : new Date(), 'Asia/Kolkata', 'yyMMdd-HHmmss');
     sheet.getRange(row, 2).setValue(p.ref);
   }
-  const S = cfg.settings;
-  const fx = Number(setting_(S, 'USD rate (INR per 1 USD)', 94.85));
-  const pol = String(setting_(S, 'Port of loading', 'Visakhapatnam Port'));
-  const cha = String(setting_(S, 'CHA / CFS partner', 'CHA partner'));
-  const millLoc = String(setting_(S, 'Mill / origin', 'Mill'));
-  const km = setting_(S, 'Inland distance (km)', '');
-  const validDays = Number(setting_(S, 'Quotation validity (days)', 7));
-  const marginPct = Number(setting_(S, 'Margin (% of cargo cost)', 10));
-  const bagKg = (String(p.packing).match(/(\d+(?:\.\d+)?)\s*kg/i) || [])[1] || 50;
-  const c = computeCosting_({ fx: fx, mt: mt, bagKg: bagKg, containerMt: setting_(S, 'MT per 20 ft container', 25), millPer100kg: millPer100kg,
-                              commodity: [p.commodity, p.grade].filter(Boolean).join(', '), mill: millLoc, rates: cfg.rates, marginPct: marginPct });
+  return p;
+}
+
+function findRfqRow_(sheet, ref) {
+  const n = sheet.getLastRow();
+  if (n < 2) return 0;
+  const refs = sheet.getRange(2, 2, n - 1, 1).getValues();
+  for (let i = 0; i < refs.length; i++) if (String(refs[i][0]) === ref) return i + 2;
+  return 0;
+}
+
+// Creates the "IC <RFQ No.>" input tab (or returns the existing one).
+function icSheet_(p, cfg, create) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const name = IC_PREFIX + p.ref;
+  let sh = ss.getSheetByName(name);
+  if (sh || !create) return { sheet: sh, created: false };
+  sh = ss.insertSheet(name);
+  const d = icDefaults_(p, cfg.settings);
+  const rows = [['key', 'Input', 'Value', 'Help']];
+  IC_FIELDS.forEach(f => rows.push(f[0] === '#' ? ['#', f[1], '', ''] : [f[0], f[1], d[f[0]] == null ? '' : d[f[0]], (f[2] ? 'Required. ' : '') + (f[3] || '')]));
+  rows.push(['#', '11. Cost lines for this deal (copied from "' + COST_RATES_TAB + '"; edit rates or Include for this deal only)', '', '']);
+  rows.push(['__lines__', 'Cost item', 'Rate (INR)', 'Per (MT / bag / container / shipment)', 'GST (Y/N)', 'Include (Y/N)', 'Basis']);
+  cfg.rates.forEach(x => rows.push(['line', x.item, x.rate == null ? '' : x.rate, x.per, x.gst ? 'Y' : 'N', x.include ? 'Y' : 'N', x.basis]));
+  const width = 7;
+  sh.getRange(1, 1, rows.length, width).setValues(rows.map(r => r.concat(Array(width - r.length).fill(''))));
+  sh.getRange(1, 1, 1, width).setFontWeight('bold').setBackground('#1B4D3E').setFontColor('#FFFFFF');
+  rows.forEach((r, i) => {
+    if (r[0] === '#') sh.getRange(i + 1, 2, 1, width - 1).setFontWeight('bold').setBackground('#F8F5EC').setFontColor('#8A6508');
+    else if (r[0] === '__lines__') sh.getRange(i + 1, 2, 1, width - 1).setFontWeight('bold').setBackground('#1B4D3E').setFontColor('#FFFFFF');
+    else if (/^Required/.test(String(r[3])) || (r[0] === 'line' && r[2] === '' && r[5] === 'Y')) sh.getRange(i + 1, 3).setBackground('#FFF3C4');
+  });
+  sh.setColumnWidth(2, 330); sh.setColumnWidth(3, 300); sh.setColumnWidth(4, 360); sh.setColumnWidths(5, 3, 110);
+  sh.hideColumns(1); sh.setFrozenRows(1);
+  return { sheet: sh, created: true };
+}
+
+// Reads the input tab into { v: {key: value}, lines: [...], missing: [labels] }.
+function readIc_(sh) {
+  const data = sh.getRange(1, 1, sh.getLastRow(), 7).getValues();
+  const v = {}, lines = [];
+  const labels = {};
+  IC_FIELDS.forEach(f => { if (f[0] !== '#') labels[f[0]] = f; });
+  data.forEach(r => {
+    const k = String(r[0]);
+    if (k === 'line') {
+      if (r[1]) lines.push({ item: String(r[1]), rate: num_(r[2]), per: String(r[3] || 'shipment').toLowerCase().trim(),
+                                              gst: /^y/i.test(String(r[4])), include: !/^n/i.test(String(r[5])), basis: String(r[6] || '') });
+    } else if (labels[k]) v[k] = typeof r[2] === 'string' ? r[2].trim() : r[2];
+  });
+  const missing = Object.keys(labels).filter(k => labels[k][2] && (v[k] === '' || v[k] == null)).map(k => labels[k][1]);
+  // An included cost line must have a rate (0 is allowed when it truly costs nothing).
+  lines.filter(x => x.include && x.rate == null).forEach(x => missing.push('Rate for cost line "' + x.item + '" (or set Include to N)'));
+  ['qty_mt', 'bag_kg', 'mill_price', 'mt_per_ctr', 'fx'].forEach(k => {
+    if (v[k] !== '' && v[k] != null && !(num_(v[k]) > 0)) missing.push(labels[k][1] + ' (must be a number above 0)');
+  });
+  return { v, lines, missing };
+}
+
+function prepareCostingInputs() {
+  const ui = SpreadsheetApp.getUi();
+  const sheet = SpreadsheetApp.getActiveSheet();
+  if (sheet.getName() !== SHEET_NAME) { ui.alert('Open the "' + SHEET_NAME + '" tab and click a cell in the RFQ row first.'); return; }
+  const row = sheet.getActiveRange().getRow();
+  if (row < 2) { ui.alert('Click a cell in an RFQ row (not the header) first.'); return; }
+  const p = rfqFromRow_(sheet, row);
+  const ic = icSheet_(p, setupCosting_(), true);
+  ic.sheet.activate();
+  ui.alert(ic.created
+    ? 'Tab "' + ic.sheet.getName() + '" is ready, filled with what the RFQ and your defaults already say.\n\nCheck every value, fill the yellow (required) cells and anything else you know, then choose Bhumi Varahi -> Create internal costing.'
+    : 'Opened the existing input tab "' + ic.sheet.getName() + '".');
+}
+
+function createInternalCosting() {
+  const ui = SpreadsheetApp.getUi();
+  const active = SpreadsheetApp.getActiveSheet();
+  const rfqs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  let row;
+  if (active.getName().indexOf(IC_PREFIX) === 0) {
+    row = findRfqRow_(rfqs, active.getName().slice(IC_PREFIX.length));
+    if (!row) { ui.alert('Could not find RFQ ' + active.getName().slice(IC_PREFIX.length) + ' in the "' + SHEET_NAME + '" tab.'); return; }
+  } else if (active.getName() === SHEET_NAME) {
+    row = active.getActiveRange().getRow();
+    if (row < 2) { ui.alert('Click a cell in an RFQ row (not the header) first.'); return; }
+  } else { ui.alert('Click a cell in an RFQ row, or open its "IC ..." input tab, first.'); return; }
+  const cfg = setupCosting_();
+  const p = rfqFromRow_(rfqs, row);
+  const ic = icSheet_(p, cfg, true);
+  if (ic.created) {
+    ic.sheet.activate();
+    ui.alert('First, the inputs. Tab "' + ic.sheet.getName() + '" is ready with what we already know.\n\nCheck it, fill the yellow cells, then run Create internal costing again.');
+    return;
+  }
+  const r = costingRow_(rfqs, row, cfg, readIc_(ic.sheet));
+  if (r.missing) { ic.sheet.activate(); ui.alert('Please fill these in the "' + ic.sheet.getName() + '" tab first:\n\n- ' + r.missing.join('\n- ')); return; }
+  ui.alert(r.message);
+}
+
+// Shared by the menu (and tests). inp = readIc_() result. Returns { message, costNo, pdfUrl, calc, buyer } or { missing }.
+function costingRow_(sheet, row, cfg, inp) {
+  if (inp.missing.length) return { missing: inp.missing };
+  const p = rfqFromRow_(sheet, row);
+  const V = inp.v, S = cfg.settings;
+  const val = k => (V[k] === '' || V[k] == null) ? '' : String(V[k]);
+  const mt = num_(V.qty_mt), fx = num_(V.fx), bagKg = num_(V.bag_kg), marginPct = num_(V.margin_pct) || 0;
+  const c = computeCosting_({ fx: fx, mt: mt, bagKg: bagKg, containerMt: num_(V.mt_per_ctr), millPer100kg: num_(V.mill_price),
+    commodity: [val('commodity'), val('variety')].filter(Boolean).join(', '), mill: [val('mill_name'), val('mill_location')].filter(Boolean).join(', '),
+    rates: inp.lines, marginPct: marginPct, gstPct: num_(V.gst_pct) });
+  const B = computeBuyer_(c.fobUsd, mt, c.containers, V);
 
   const props = PropertiesService.getScriptProperties();
   const year = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy');
@@ -857,13 +1135,19 @@ function costingRow_(sheet, row, millPer100kg, mt, cfg) {
   const costNo = 'BV-IC-' + year + '-' + ('00' + seq).slice(-3);
   props.setProperty('costFob_' + p.ref, c.fobUsdPerMt.toFixed(2));
 
-  const inr = n => (n < 0 ? '-' : '') + 'INR ' + Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  const usd = n => (n < 0 ? '-' : '') + 'USD ' + Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const grp = n => Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const inr = n => (n < 0 ? '-' : '') + 'INR ' + grp(n);
+  const usd = n => (n < 0 ? '-' : '') + 'USD ' + grp(n);
+  const loc = n => num_(V.local_fx) && val('local_ccy') ? '  (~' + val('local_ccy') + ' ' + Math.round(n * num_(V.local_fx)).toLocaleString('en-US') + ')' : '';
   const fmt = d => Utilities.formatDate(d, 'Asia/Kolkata', 'dd MMM yyyy');
   const GREEN = '#1B4D3E', GOLD = '#8A6508', GREY = '#5A6A72', CREAM = '#F8F5EC';
-  const dest = destText_(p) || '-';
+  const pol = val('pol'), pod = val('pod'), finalDest = val('final_dest');
+  const route = pod + (finalDest ? ' (transit) -> ' + finalDest + ', ' + val('buyer_country') : ', ' + val('buyer_country'));
+  const validDays = num_(V.validity_days) || 7;
+  const NA = 'To confirm';
+  const or = (k, d) => val(k) || d || NA;
 
-  const doc = DocumentApp.create(costNo + ' INTERNAL ' + (p.name || 'Buyer'));
+  const doc = DocumentApp.create(costNo + ' INTERNAL ' + (val('buyer') || 'Buyer'));
   const body = doc.getBody();
   body.setMarginTop(36).setMarginBottom(36).setMarginLeft(42).setMarginRight(42);
   try {
@@ -891,6 +1175,9 @@ function costingRow_(sheet, row, millPer100kg, mt, cfg) {
     (opts.dark || []).forEach(i => { for (let j = 0; j < t.getRow(i).getNumCells(); j++) { t.getCell(i, j).setBackgroundColor(GREEN); t.getCell(i, j).editAsText().setBold(true).setForegroundColor('#FFFFFF'); } });
     return t;
   };
+  const kv = rows => table(rows.filter(r => r[1] !== '' && r[1] != null), { head: false, widths: [150, 360] });
+  let n = 0;
+  const H = t => heading((++n) + '. ' + t);
 
   para('Bhumi Varahi Impex Pvt Ltd  |  ' + NOTIFY_EMAIL + '  |  +91 94929 92666', { size: 8, color: GREY });
   body.appendHorizontalRule();
@@ -900,24 +1187,37 @@ function costingRow_(sheet, row, millPer100kg, mt, cfg) {
     ['Costing No.', costNo, 'Date of assessment', fmt(new Date())],
     ['Buyer RFQ No.', p.ref, 'USD rate', '1 USD = INR ' + fx],
     ['Delivery term', 'FOB ' + pol, 'Quote validity', validDays + ' calendar days'],
+    ['Payment', or('payment_option'), 'Buyer asked for', val('incoterm') || '-'],
   ], { head: false, widths: [95, 160, 105, 150] });
 
-  heading('1. Shipment summary');
-  table([
-    ['Buyer', [p.name, p.contact ? 'Attn: ' + p.contact : '', p.country].filter(Boolean).join(', ')],
-    ['Commodity', [p.commodity, p.grade].filter(Boolean).join(', ')],
-    ['Quantity', mt + ' MT (' + c.bags + ' bags x ' + bagKg + ' kg)' + (p.quantity && String(mt) + ' MT' !== p.quantity ? '   [RFQ: ' + p.quantity + ']' : '')],
-    ['Containers', c.containers + ' x 20 ft FCL'],
-    ['Origin / mill', millLoc + (km ? ' (about ' + km + ' km to CFS)' : '')],
-    ['CHA / CFS', cha],
-    ['Port of loading', pol],
-    ['Port of discharge', p.port ? String(p.port).replace(/\s*\(transit\)$/, '') + (/\(transit\)$/.test(p.port) ? ' (transit port)' : '') : '-'],
-  ].concat(p.final_dest ? [['Final destination', p.final_dest + ', ' + p.country + ' (overland, bonded transit)']] : [['Destination country', p.country || '-']]).concat([
-    ['Buyer asked for', ['Incoterm: ' + (p.incoterm || '-'), 'Payment: ' + (p.payment || '-'), 'Shipment: ' + (p.shipment || '-'), 'Packing: ' + (p.packing || '-'), 'Branding: ' + (p.label || '-')].join('\n')],
-  ]).concat(p.price ? [['Buyer target price', 'USD ' + p.price + ' / MT']] : []).concat(p.notes && p.notes !== 'None' ? [['Buyer specifications', p.notes]] : []),
-  { head: false, widths: [120, 390] });
+  H('Shipment summary');
+  kv([
+    ['Buyer', [val('buyer'), val('contact') ? 'Attn: ' + val('contact') : ''].filter(Boolean).join(', ')],
+    ['Buyer address', val('buyer_address')], ['Buyer tax ID', val('buyer_tin')],
+    ['Commodity', [val('commodity'), val('variety'), val('crop_year') ? 'crop ' + val('crop_year') : ''].filter(Boolean).join(', ')],
+    ['HS code', val('hs_code')],
+    ['Quantity', mt + ' MT (' + c.bags + ' bags x ' + bagKg + ' kg' + (val('bag_type') ? ', ' + val('bag_type') : '') + ')'],
+    ['Bag branding', val('branding')],
+    ['Containers', c.containers + ' x ' + or('container_type', '20 ft FCL')],
+    ['Procurement origin', [val('mill_name'), val('mill_location')].filter(Boolean).join(', ') + (val('inland_km') ? ' (about ' + val('inland_km') + ' km to CFS)' : '')],
+    ['Inland transport', val('lorry')], ['CHA / CFS', val('cha')], ['Stuffing', val('stuffing')],
+    ['Port of loading', pol], ['Shipping line', val('shipping_line')],
+    ['Port of discharge', pod + (finalDest ? ' (transit port)' : '')],
+    ['Final destination', finalDest ? finalDest + ', ' + val('buyer_country') + (val('corridor') ? ' via ' + val('corridor') : '') : val('buyer_country')],
+    ['Transit regime', val('transit_regime')], ['Destination inspection', val('dest_inspection')],
+    ['Shipment window', val('shipment_window')],
+  ]);
 
-  heading('2. Cost build-up: mill to ship\'s rail (FOB)');
+  const qrows = [['Moisture', 'q_moisture'], ['Broken grains', 'q_broken'], ['Foreign matter (inorganic)', 'q_fm_inorg'], ['Foreign matter (organic)', 'q_fm_org'],
+    ['Damaged / discoloured / chalky', 'q_damaged'], ['Milling degree & polish', 'q_milling'], ['Aflatoxin', 'q_aflatoxin'], ['Heavy metals', 'q_heavy'], ['Other', 'q_other']]
+    .filter(q => val(q[1])).map(q => [q[0], val(q[1])]);
+  if (qrows.length || val('q_dest_std')) {
+    H('Quality specification');
+    if (qrows.length) table([['Parameter', 'Bhumi Varahi export standard']].concat(qrows), { widths: [180, 330] });
+    if (val('q_dest_std')) para('Destination standard to meet: ' + val('q_dest_std'), { size: 9, bold: true, color: GOLD });
+  }
+
+  H('Cost build-up: mill to ship\'s rail (FOB)');
   const rows = [['No', 'Cost component', 'Basis', 'Cost (INR)', 'Cost (USD)']]
     .concat(c.lines.map((l, i) => [String(i + 1), l.item, l.basis, inr(l.inr), usd(l.usd)]));
   rows.push(['', 'Net cost (break-even at ship\'s rail)', '', inr(c.cost), usd(c.costUsd)]);
@@ -925,15 +1225,15 @@ function costingRow_(sheet, row, millPer100kg, mt, cfg) {
   rows.push(['', 'FINAL FOB PRICE TO QUOTE', '', inr(c.fob), usd(c.fobUsd)]);
   table(rows, { widths: [24, 150, 170, 85, 80], bold: [rows.length - 3], dark: [rows.length - 1] });
 
-  heading('3. Price to quote the buyer');
-  table([
+  H('Price to quote the buyer');
+  kv([
     ['FOB price per MT', usd(c.fobUsdPerMt) + '   (' + inr(c.fobPerMt) + ')'],
     ['Contract value', usd(c.fobUsd) + ' for ' + mt + ' MT, FOB ' + pol],
-  ].concat(p.price ? [['Buyer target', 'USD ' + p.price + ' / MT  (' + (Number(p.price) >= c.fobUsdPerMt ? 'at or above our FOB price' : 'BELOW our FOB price by ' + usd(c.fobUsdPerMt - Number(p.price)) + ' / MT') + ')']] : []),
-  { head: false, widths: [120, 390] });
-  if (/^(CFR|CIF)/i.test(p.incoterm)) para('The buyer asked for ' + p.incoterm + '. Add ocean freight to ' + (portName_(p) || p.country) + (/^CIF/i.test(p.incoterm) ? ' and marine insurance' : '') + ' before quoting; the figures above are FOB only.', { size: 9, bold: true, color: GOLD });
+    ['Buyer target', p.price ? 'USD ' + p.price + ' / MT  (' + (Number(p.price) >= c.fobUsdPerMt ? 'at or above our FOB price' : 'BELOW our FOB price by ' + usd(c.fobUsdPerMt - Number(p.price)) + ' / MT') + ')' : ''],
+  ]);
+  if (/^(CFR|CIF)/i.test(val('incoterm'))) para('The buyer asked for ' + val('incoterm') + '. Add ocean freight to ' + (pod || val('buyer_country')) + (/^CIF/i.test(val('incoterm')) ? ' and marine insurance' : '') + ' before quoting; the figures above are FOB only.', { size: 9, bold: true, color: GOLD });
 
-  heading('4. Exporter net return');
+  H('Exporter net return');
   table([
     ['Financial metric', 'Amount (INR)', 'Amount (USD)'],
     ['Gross FOB revenue (' + mt + ' MT @ ' + usd(c.fobUsdPerMt) + ' / MT)', inr(c.fob), usd(c.fobUsd)],
@@ -942,59 +1242,116 @@ function costingRow_(sheet, row, millPer100kg, mt, cfg) {
     ['Margin on cargo cost', marginPct + '%  (' + inr(c.marginPerMt) + ' / MT)', usd(c.marginUsd / mt) + ' / MT'],
   ], { widths: [250, 130, 130], bold: [3] });
 
-  heading('5. Payment rules (no credit)');
+  if (B) {
+    H('Buyer landed cost and profit (estimate)');
+    const br = [['Cost component', 'Per MT (USD)', 'Total (USD)']].concat(B.rows.map(r => [r.label, usd(r.perMt), usd(r.total) + (r.kind === 'total' ? loc(r.total) : '')]));
+    const subs = [], tot = [];
+    B.rows.forEach((r, i) => { if (r.kind === 'sub') subs.push(i + 1); if (r.kind === 'total') tot.push(i + 1); });
+    if (B.sell) {
+      br.push(['Buyer wholesale sales (at ' + usd(B.sellPerMt) + ' / MT)', usd(B.sellPerMt), usd(B.sell) + loc(B.sell)]);
+      br.push(['Buyer estimated profit (' + B.roi + '% on landed cost)', (B.profit >= 0 ? '+' : '') + usd(B.profitPerMt), (B.profit >= 0 ? '+' : '') + usd(B.profit) + loc(B.profit)]);
+    }
+    table(br, { widths: [270, 110, 130], bold: subs.concat(B.sell ? [br.length - 1] : []), dark: tot });
+    table([
+      ['Stakeholder', 'Outlay', 'Revenue', 'Net profit'],
+      ['Bhumi Varahi Impex (seller)', inr(c.cost) + '\n(' + usd(c.costUsd) + ')', inr(c.fob) + '\n(' + usd(c.fobUsd) + ' FOB)', '+' + inr(c.margin) + ' (' + usd(c.marginUsd) + ')\n' + marginPct + '% on cargo'],
+      ['Buyer / importer', usd(B.landed) + loc(B.landed), B.sell ? usd(B.sell) + loc(B.sell) : 'Selling price not entered', B.sell ? (B.profit >= 0 ? '+' : '') + usd(B.profit) + '\n' + B.roi + '% on landed cost' : '-'],
+    ], { widths: [130, 130, 130, 120] });
+    para('Buyer-side figures are estimates from the inputs tab. Confirm freight, duties and local charges before using them in negotiation.', { size: 8.5, color: GREY });
+  }
+
+  H('Payment rules (no credit)');
   para('Cargo leaves the mill only after advance clearance. Original documents are released only after 100% of contract funds are in our bank. No open account, DA or deferred credit.', { size: 9 });
   table([
     ['Structure', 'How it works', 'Release condition'],
-    ['Option A (preferred): 30% advance + 70% against BL copy', '30% T/T on signing the proforma invoice; triggers mill procurement. 70% T/T within 3 business days of the BL scan, phyto and other documents.', 'Original BL / documents released or telex release only after 100% is credited.'],
+    ['Option A: 30% advance + 70% against BL copy', '30% T/T on signing the proforma invoice; triggers mill procurement. 70% T/T within ' + or('balance_days', 3) + ' business days of the BL scan, phyto and other documents.', 'Original BL / documents released or telex release only after 100% is credited.'],
     ['Option B: 100% irrevocable confirmed sight L/C', 'Sight L/C from a prime bank, confirmed by a first-class Indian bank. No usance. L/C charges for the buyer\'s account.', 'Payment guaranteed by the confirming bank on compliant documents.'],
   ], { widths: [130, 230, 150] });
-  para('Buyer asked for: ' + (p.payment || '-'), { size: 9, bold: true, color: GOLD });
+  para('Selected for this deal: ' + or('payment_option'), { size: 9, bold: true, color: GOLD });
 
-  heading('6. Pre-shipment registrations to confirm');
-  table([['Check', 'Registration / document', 'What to confirm']].concat([
-    ['IEC (DGFT)', 'Active and linked with PAN'], ['GST + LUT', 'Active LUT for zero-rated export'], ['AD code at the port', 'Bank AD code registered with port customs'],
-    ['ICEGATE', 'Active credentials mapped to the port'], ['APEDA RCMC', 'Valid for the commodity'], ['FSSAI', 'Valid licence copy on file'],
-    ['Plant quarantine (PQIS)', 'Portal access for the CHA to apply for phyto'],
-  ].map(x => ['[  ]', x[0], x[1]])), { widths: [40, 170, 300] });
+  const bank = [['Account name', 'Bank: account name'], ['Bank', 'Bank: bank name'], ['Branch', 'Bank: branch'], ['Account number', 'Bank: account number'],
+    ['AD code', 'Bank: AD code'], ['IFSC', 'Bank: IFSC'], ['SWIFT / BIC', 'Bank: SWIFT / BIC'], ['Purpose code', 'Bank: remittance purpose code']]
+    .map(b => [b[0], String(setting_(S, b[1], ''))]);
+  const clauses = [
+    ['Balance payment', val('balance_days') ? 'Within ' + val('balance_days') + ' business days of the BL scan. Demurrage at destination caused by late payment is for the buyer\'s account.' : ''],
+    ['Container payload', val('payload') ? 'Carrier booking must specify ' + val('payload') + '. Any overweight surcharge is for the buyer\'s account.' : ''],
+    ['Weight and moisture', val('moisture_tol') ? 'Port of loading VGM weight is final. Natural transit moisture variation of ' + val('moisture_tol') + ' is accepted.' : ''],
+    ['Currency protection', val('forex_recal') ? 'Priced at INR ' + fx + ' / USD. If the INR strengthens by more than ' + val('forex_recal') + '% before the advance arrives, the USD price is recalculated.' : ''],
+    ['CFS free time', val('free_days') ? val('free_days') + ' days free at CFS; then ' + or('demurrage') + '.' : ''],
+    ['Quote validity', validDays + ' calendar days from issue.'],
+  ];
+  H('Contract clauses and bank details');
+  kv(clauses);
+  if (bank.some(b => b[1] && b[0] !== 'Account name' && b[0] !== 'Purpose code')) kv(bank);
+  else para('Bank details: fill the "Bank:" rows in ' + COST_SETTINGS_TAB + ' to print them here.', { size: 8.5, color: GREY });
 
-  heading('7. Shipping documents to dispatch');
+  H('Registrations to have active before dispatch');
+  table([['Registration', 'Status / number (from ' + COST_SETTINGS_TAB + ')']].concat(
+    COST_SETTINGS_DEFAULT.filter(d => /^Licence: /.test(d[0])).map(d => [d[0].replace(/^Licence: /, ''), String(setting_(S, d[0], 'Not entered'))])), { widths: [250, 260] });
+  para('Shipment cannot be filed until each line is Active.', { size: 8.5, color: GREY });
+
+  H('Information exchange with the buyer');
+  table([
+    ['We need from the buyer', 'Status'],
+    ['Full company name and registered address', val('buyer_address') ? 'Received' : 'Pending'],
+    ['Tax ID (TIN / VAT no.)', val('buyer_tin') ? val('buyer_tin') : 'Pending'],
+    ['Signed proforma invoice and purchase order', 'Pending'],
+    ['30% advance (SWIFT MT103) or confirmed sight L/C', 'Pending'],
+    ['Import declaration / permit', val('import_permit') || 'Pending'],
+    ['Shipping line booking or freight nomination', val('shipping_line') || 'Pending'],
+    ['Consignee and notify party wording for the B/L', val('consignee') ? val('consignee') + (val('notify_party') ? ' / notify: ' + val('notify_party') : '') : 'Pending'],
+    ['Clearing agent at destination', val('clearing_agent') || 'Pending'],
+  ].concat(finalDest ? [['Final dry port / inland destination', finalDest]] : []), { widths: [300, 210] });
+  table([
+    ['We give the buyer', 'Issued by'],
+    ['Commercial invoice and packing list', 'Bhumi Varahi Impex'], ['Certificate of Origin', 'Chamber of Commerce'],
+    ['Phytosanitary certificate', 'Plant Quarantine (PQIS)'], ['Fumigation certificate', 'Accredited fumigator'],
+    ['VGM certificate', 'Terminal weighbridge / CHA'], ['Bill of Lading draft' + (finalDest ? ' with transit clause' : ''), 'Shipping line'],
+  ].concat(val('dest_inspection') ? [[val('dest_inspection'), 'Inspection agency']] : []).concat([['Dispatch notice and courier tracking', 'Bhumi Varahi Impex']]), { widths: [300, 210] });
+
+  H('Shipping documents to dispatch');
   table([['Check', 'Document', 'Originals / copies', 'Issued by']].concat([
-    ['Bill of Lading', '3 originals + 3 copies', 'Shipping line'], ['Commercial invoice', '1 original + 3 copies', 'Bhumi Varahi Impex'],
+    ['Bill of Lading' + (finalDest ? ' (with transit clause to ' + finalDest + ')' : ''), '3 originals + 3 copies', 'Shipping line'], ['Commercial invoice', '1 original + 3 copies', 'Bhumi Varahi Impex'],
     ['Packing list', '1 original + 3 copies', 'Bhumi Varahi Impex'], ['Certificate of Origin', '1 original + 1 copy', 'Chamber of Commerce'],
     ['Phytosanitary certificate', '1 original + 2 copies', 'Plant Quarantine (PQIS)'], ['Fumigation certificate', '1 original + 1 copy', 'Accredited fumigator'],
     ['VGM certificate', '1 electronic / print', 'Terminal weighbridge / CHA'],
-  ].concat(c.lines.some(l => /PVoC|CoC|inspection/i.test(l.item)) ? [['Certificate of Conformity (PVoC)', '1 original + 1 copy', 'SGS / Cotecna / BV']] : [])
+  ].concat(val('dest_inspection') || c.lines.some(l => /PVoC|CoC|inspection/i.test(l.item)) ? [[val('dest_inspection') || 'Certificate of Conformity (PVoC)', '1 original + 1 copy', 'SGS / Cotecna / BV']] : [])
    .map(x => ['[  ]'].concat(x))), { widths: [40, 170, 140, 160] });
+  if (finalDest) para('B/L transit clause: "Cargo in transit to ' + finalDest + ', ' + val('buyer_country') + ' on account and risk of consignee".', { size: 9, bold: true, color: GOLD });
 
-  heading('8. Execution roadmap');
+  H('Execution roadmap');
+  const d = (k, dflt) => val(k) ? 'Days ' + val(k) : dflt;
   table([['Stage', 'Phase', 'Key steps']].concat([
     ['Day 1', 'Contract & advance', 'Send proforma invoice. Buyer pays 30% advance or opens confirmed sight L/C. Confirm funds and release procurement order.'],
-    ['Days 2-3', 'Procurement & haulage', 'Bind inland insurance. Check moisture and quality at the mill. Order bags, load the lorry to the CFS.'],
-    ['Days 4-5', 'CFS receiving & stuffing', 'Weigh and check the cargo, rebag and stitch, line the container, add desiccant, stuff and fumigate.'],
-    ['Days 6-7', 'Customs clearance', 'CHA files the shipping bill on ICEGATE, LEO granted, phyto and COO issued, VGM done.'],
-    ['Days 8-10', 'Terminal & loading', 'Move container to the terminal, pay THC, load on board. Risk passes to the buyer under FOB.'],
-    ['After loading', 'Documents & settlement', 'Send document scans, collect 70% balance within 3 business days, release originals, close EDPMS / e-BRC.'],
-  ]), { widths: [70, 120, 320] });
+    [d('t_procure', 'Days 2-3'), 'Procurement & haulage', 'Bind inland insurance. Check quality at the mill' + (val('q_moisture') ? ' (moisture max ' + val('q_moisture') + ')' : '') + '. Order ' + c.bags + ' bags, load lorry to ' + (val('cha') || 'the CFS') + '.'],
+    [d('t_cfs', 'Days 4-5'), 'CFS receiving & stuffing', 'Weigh and check the cargo, rebag and stitch, line the container, add desiccant, stuff and fumigate.' + (val('dest_inspection') ? ' Draw samples for ' + val('dest_inspection') + '.' : '')],
+    [d('t_cha', 'Days 6-7'), 'Customs clearance', 'CHA files the shipping bill on ICEGATE, LEO granted, phyto and COO issued, VGM done.'],
+    ['Cargo ready in ' + or('t_ready', '7-10') + ' days', 'Terminal & loading', 'Move container to ' + pol + ', pay THC, load on board. Risk passes to the buyer under FOB.'],
+    ['After loading', 'Documents & settlement', 'Send document scans, collect the balance within ' + or('balance_days', 3) + ' business days, release originals, close EDPMS / e-BRC.'],
+  ]).concat(val('t_sea') || finalDest ? [['Destination', 'Buyer scope', 'Sea transit to ' + pod + (val('t_sea') ? ' about ' + val('t_sea') + ' days' : '') + (finalDest ? '; ' + (val('transit_regime') || 'transit') + ' overland to ' + finalDest + (val('t_inland') ? ' about ' + val('t_inland') + ' days' : '') : '') + '.']] : []),
+  { widths: [80, 120, 310] });
 
-  heading('9. Internal checks before sending the price');
+  H('Internal checks before sending the price');
   table([['Check', 'Item', 'Owner']].concat([
     ['Mill price and quality (moisture, broken %) confirmed', 'Procurement'], ['Inland insurance bound', 'Finance'], ['Bag quality and count confirmed', 'Packaging'],
     ['Lorry rate and dispatch date fixed', 'Logistics'], ['Container booking, payload and overweight terms', 'CHA desk'], ['CFS slot and free time confirmed', 'CHA desk'],
-    ['Fumigation booked', 'CHA desk'], ['Weight / moisture tolerance clause in the contract', 'Commercial'], ['Payment terms accepted by the buyer', 'Finance'],
+    ['Fumigation booked', 'CHA desk'], ['Weight / moisture tolerance clause in the contract', 'Commercial'],
+    ['Transit B/L clause instructed', 'Documentation'], ['Payment terms accepted by the buyer', 'Finance'], ['e-BRC / EDPMS reserve budgeted', 'Treasury'],
   ].map(x => ['[  ]'].concat(x))), { widths: [40, 350, 120] });
 
   // Destination research by Gemini with Google Search (only when a key is set and research is on).
   let research = null;
   if (!/^n/i.test(String(setting_(S, 'Gemini research (Y/N)', 'Y')))) {
-    research = researchDestination_(p, c, { mt: mt, pol: pol, fx: fx, model: String(setting_(S, 'Gemini model', 'gemini-3.8-flash')) });
+    const rp = Object.assign({}, p, { commodity: val('commodity'), grade: val('variety'), packing: bagKg + ' kg ' + val('bag_type'),
+      port: pod + (finalDest ? ', ' + val('buyer_country') + ' (transit)' : ''), final_dest: finalDest, country: val('buyer_country'), incoterm: val('incoterm'), payment: val('payment_option') });
+    research = researchDestination_(rp, c, { mt: mt, pol: pol, fx: fx, model: String(setting_(S, 'Gemini model', 'gemini-3.8-flash')) });
   }
   if (research) {
-    heading('10. Destination research (AI draft: verify before use)');
+    H('Destination research (AI draft: verify before use)');
     if (research.error) {
       para('Research could not be completed: ' + research.error, { size: 9, color: '#9B1C1C' });
     } else {
-      para('Prepared by Gemini with Google Search on ' + fmt(new Date()) + '. Figures change often; check duties, rules and prices with the official source or your CHA before quoting.', { size: 8.5, color: GOLD, bold: true });
+      para('Prepared by Gemini with Google Search on ' + fmt(new Date()) + '. Figures change often; check duties, rules and prices with the official source or your CHA before quoting. Use them to fill section 7 of the input tab.', { size: 8.5, color: GOLD, bold: true });
       researchToDoc_(body, research.text, GREEN);
       if (research.sources.length) {
         para('Sources', { size: 9, bold: true, color: GREY });
@@ -1007,10 +1364,11 @@ function costingRow_(sheet, row, millPer100kg, mt, cfg) {
     }
   }
 
-  heading((research ? '11' : '10') + '. Approvals');
+  H('Approvals');
+  const sig = (role, k) => role + '\n' + (val(k) || '') + '\n\nSignature: ____________\nDate: ____ / ____ / ' + year;
   table([
-    ['Costing verified', 'Logistics & CHA cleared', 'Final commercial sign-off'],
-    ['\n\nSignature: ____________\nDate: ____ / ____ / ' + year, '\n\nSignature: ____________\nDate: ____ / ____ / ' + year, '\n\nSignature: ____________\nDate: ____ / ____ / ' + year],
+    ['Costing & pricing verified', 'Logistics & CHA cleared', 'Final commercial sign-off'],
+    [sig('Commercial & procurement', 'appr_costing'), sig('Logistics & compliance', 'appr_logistics'), sig('Director / Managing Partner', 'appr_director')],
   ], { widths: [170, 170, 170] });
   doc.saveAndClose();
 
@@ -1024,9 +1382,10 @@ function costingRow_(sheet, row, millPer100kg, mt, cfg) {
   const stamp = costNo + ': cost ' + usd(c.costUsd / mt) + '/MT, FOB ' + usd(c.fobUsdPerMt) + '/MT (internal)';
   note.setValue(note.getValue() ? note.getValue() + ' · ' + stamp : stamp);
   return {
-    costNo: costNo, pdfUrl: pdf.getUrl(), calc: c,
+    costNo: costNo, pdfUrl: pdf.getUrl(), calc: c, buyer: B,
     message: costNo + ' created (internal, not sent to anyone).\n\nNet cost: ' + usd(c.costUsd) + ' (' + usd(c.costUsd / mt) + ' / MT)\nFOB price to quote: ' + usd(c.fobUsdPerMt) + ' / MT  (' + usd(c.fobUsd) + ' total)' +
       (p.price ? '\nBuyer target: USD ' + p.price + ' / MT' : '') +
+      (B ? '\nBuyer landed cost: ' + usd(B.landedPerMt) + ' / MT' + (B.sell ? ', buyer profit ' + usd(B.profitPerMt) + ' / MT (' + B.roi + '%)' : '') : '') +
       (research ? (research.error ? '\n\nGemini research failed: ' + research.error : '\n\nGemini destination research added (' + research.sources.length + ' sources).') : '') +
       '\n\nPDF: ' + pdf.getUrl() + '\nEditable copy: ' + docFile.getUrl() + '\n\nNext: Create quotation PDF will suggest this FOB price.'
   };

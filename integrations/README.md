@@ -27,7 +27,33 @@ and an email alert goes to info@bhumivarahiimpex.com.
 - Use the **Notes (internal)** column for follow-up notes.
 - **Resend a buyer email:** click any cell in the RFQ row, then use the **Bhumi Varahi → Resend buyer email (selected row)** menu at the top of the sheet. It asks before sending and notes the resend in the Notes column. The menu appears after you reload the sheet once the new script is saved.
 - **RFQ No. from the website:** the form now makes the RFQ No. (BV-yyMMdd-HHmmss, India time) and shows it to the buyer on screen straight away, with a copy button and an "Also send on WhatsApp" button that fills in the RFQ details. The script keeps that number in column B, so the screen, the sheet, the emails and WhatsApp all show the same one.
-- **Internal costing (for us only):** click a cell in the RFQ row, then **Bhumi Varahi → Create internal costing (selected row)**. Type the mill price in INR per 100 kg (or leave it empty for the default). It builds a confidential costing dossier, numbered BV-IC-2026-001 and so on, in the Drive folder **Bhumi Varahi Internal Costing**. The dossier covers the shipment summary, the cost build-up from mill to ship's rail in INR and USD with 18% GST on the taxable CFS/CHA items, your margin, the FOB price to quote, net return, payment rules, registration and document checklists, the execution roadmap, internal checks and sign-off boxes. It is never emailed. The first run adds two tabs you can edit at any time: **Cost Settings** (USD rate, MT per container, margin %, port, CHA partner, mill) and **Cost Rates** (each charge, its rate, whether it is per MT, bag, container or shipment, whether GST applies, and Y/N to include it). Turn on the PVoC/CoC line only for countries that need it. Afterwards, **Create quotation PDF** shows the costed FOB price as a suggestion.
+- **Internal costing (for us only), in two steps:**
+  1. Click the RFQ row, then **Bhumi Varahi → Prepare internal costing inputs**. A tab named **IC <RFQ No.>** opens. It lists all 79 manual inputs from the sample dossier, already filled from the RFQ and your defaults. Check them and fill the **yellow cells**, which are required. The inputs are:
+     - deal and buyer, including address, tax ID and HS code
+     - quality specification
+     - mill and mill price
+     - origin shipping, including port of loading and containers
+     - destination route, including port of discharge, final inland destination, corridor, transit regime, inspection, consignee, notify party and clearing agent
+     - USD rate, margin and GST
+     - buyer landed cost: freight, local charges, insurance, port, **destination Lo-Lo**, trucking, bond, duty with any minimum, clearing, VAT, selling price and local currency
+     - contract clauses
+     - timeline
+     - approver names
+
+     At the bottom are this deal's **cost lines**, copied from Cost Rates, which you can edit for this deal only. **Lo-Lo (lift on / lift off)** is included by default with no rate, so the costing will not run until you enter it, or set Include to N.
+  2. Choose **Bhumi Varahi → Create internal costing**, from the IC tab or the RFQ row. It lists anything still missing. Otherwise it builds the confidential dossier, numbered BV-IC-2026-001 and so on, in the Drive folder **Bhumi Varahi Internal Costing**. The dossier contains:
+     - shipment summary and quality table
+     - cost build-up in INR and USD with GST, margin and the FOB price
+     - exporter net return
+     - **buyer landed cost and profit**, and a two-party summary
+     - payment rules
+     - contract clauses and bank details
+     - licence status
+     - what we need from and give to the buyer
+     - document checklist with the transit B/L clause
+     - roadmap, internal checks, optional Gemini research and approvals
+
+     It is never emailed. Company-wide values live in **Cost Settings**: USD rate, margin, GST, mill, port, CHA, bank details, and the status of IEC / GST-LUT / AD code / ICEGATE / APEDA RCMC and RCAC / FSSAI / PQIS. Standard rates live in **Cost Rates**. Afterwards, **Create quotation PDF** suggests the costed FOB price.
 - **Gemini research in the internal costing (optional):** get an API key at aistudio.google.com/apikey. Turn on billing for that Google project, because search grounding is not on the free tier: the first 5,000 grounded prompts a month are free, then about USD 14 per 1,000 searches. In the sheet, choose **Bhumi Varahi → Set Gemini API key** and paste the key. It is stored in the script's private properties, not in the sheet. From then on every internal costing gets a section **"Destination research (AI draft: verify before use)"** with source links, covering India export rules, destination import compliance, duties and taxes, market prices, the buyer's landed cost and margin, and risks. Set **Gemini research** to N in Cost Settings to switch it off, or change **Gemini model** there if Google retires the current one. If the call fails, the costing is still created and shows the error.
 - **Create a quotation PDF:** click any cell in the RFQ row, then **Bhumi Varahi → Create quotation PDF (selected row)**. Type your price in USD per MT. Choose **Yes** to email the PDF to the buyer straight away, or **No** to only create it so you can check it first. The quotation gets its own number (BV-Q-2026-001, 002 and so on), shows the buyer's RFQ No., the amount when the quantity is in MT, the Incoterm, payment, shipment, packing and branding terms, and is valid for 7 days. A PDF and an editable Google Doc are saved in the Drive folder **Bhumi Varahi Quotations**. Emailed quotations set Status to **Quoted**, and every quotation is noted in the Notes column. The first time, Google asks you to allow Docs and Drive access.
 - Reply to the alert email to answer the buyer directly.
