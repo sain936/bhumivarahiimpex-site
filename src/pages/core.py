@@ -186,6 +186,7 @@ def product(cat, p):
 def hub(cat, groups, h1, lead, title, desc, other):
     C=CATS[cat]; secs=''; allitems=[]
     for gname, items in groups:
+        gid={'Basmati rice':'basmati','Aromatic long-grain rice':'aromatic','Non-basmati rice':'non-basmati'}.get(gname,'all')
         cards=''
         for p in items:
             u=f"/{cat}/{p['slug']}/"; allitems.append((p['name'],u))
@@ -195,7 +196,7 @@ def hub(cat, groups, h1, lead, title, desc, other):
             <span class="mt-4 text-sm font-semibold text-brand-agriGreen group-hover:underline underline-offset-4">View specifications &rarr;</span>
           </a>'''
         secs+=f'''
-    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12">
+    <section id="{gid}" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12 scroll-mt-28">
       <h2 class="text-2xl sm:text-3xl font-cinzel font-bold text-slate-900 mb-6">{html.escape(gname)}</h2>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">{cards}</div>
     </section>'''
