@@ -31,6 +31,63 @@
   }
   </script>
 
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Which products do you export?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Rice (1010 white, parboiled, broken and 1121 basmati), Indian spices such as Nizamabad turmeric and Guntur Teja red chilli, pulses and grains, and custom industrial goods on request."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Which Incoterms do you offer?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "We quote on FOB, CFR and CIF terms. Tell us your discharge port in the RFQ form and we will price accordingly."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Which ports do you ship from?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Shipments are loaded at Kakinada, Visakhapatnam and Chennai ports on the east coast of India."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How is the cargo packed?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Packaging follows buyer specification, for example 25 kg or 50 kg PP bags, with custom branding and marking on request."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How is quality verified?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Cargo is inspected before dispatch, and third-party inspection by agencies such as SGS or Bureau Veritas can be arranged along with phytosanitary and fumigation certificates."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How quickly will I get a quotation?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Our export desk responds to complete RFQs within 24 business hours."
+      }
+    }
+  ]
+}
+  </script>
+
   <!-- Google Fonts: Playfair Display (headings), Cinzel (logo), Montserrat and Plus Jakarta Sans -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -55,6 +112,21 @@
                   url('https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=2000&q=80') center/cover no-repeat;
     }
 
+    html { scroll-padding-top: 6.5rem; }
+    a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 3px solid #D4AF37; outline-offset: 2px;
+    }
+    .faq summary::-webkit-details-marker { display: none; }
+    .nav-link.active { color: #1B4D3E; text-decoration: underline; text-decoration-color: #D4AF37; text-decoration-thickness: 2px; text-underline-offset: 8px; }
+    .header-scrolled { box-shadow: 0 6px 24px -12px rgba(8,23,17,.35); }
+    .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; }
+    .reveal.in { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .reveal { opacity: 1; transform: none; transition: none; }
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+
     .toast-animate {
       animation: slideInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
@@ -73,17 +145,19 @@
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans antialiased selection:bg-brand-ochreGold selection:text-white">
 
+  <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:bg-white focus:text-brand-agriGreen focus:px-4 focus:py-2 focus:rounded-lg focus:shadow-lg font-semibold">Skip to content</a>
+
   <!-- ================= NOTIFICATION TOAST ================= -->
-  <div id="toastMessage" class="fixed bottom-6 right-6 z-50 hidden bg-slate-900 border-2 border-brand-warmGold text-white px-6 py-4 rounded-2xl shadow-2xl items-center gap-3">
+  <div id="toastMessage" role="status" aria-live="polite" class="fixed bottom-6 right-6 z-50 hidden bg-slate-900 border-2 border-brand-warmGold text-white px-6 py-4 rounded-2xl shadow-2xl items-center gap-3">
     <div class="w-8 h-8 rounded-full bg-brand-warmGold text-slate-950 flex items-center justify-center font-bold">✓</div>
     <div>
-      <h4 class="font-bold text-sm text-brand-goldLight" id="toastTitle">RFQ Received</h4>
+      <p class="font-bold text-sm text-brand-goldLight" id="toastTitle">RFQ Received</p>
       <p class="text-xs text-slate-300" id="toastBody">Our direct trade desk will connect within 24 hours.</p>
     </div>
   </div>
 
   <!-- ================= TOP NAVIGATION BAR ================= -->
-  <header class="sticky top-0 z-50 bg-white/98 backdrop-blur-md border-b-2 border-brand-agriGreen/20 shadow-sm transition-all">
+  <header id="siteHeader" class="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b-2 border-brand-agriGreen/20 shadow-sm transition-all">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-24 flex items-center justify-between">
       
       <!-- Full Brand SVG Logo -->
@@ -125,13 +199,14 @@
       </a>
 
       <!-- Desktop Links -->
-      <nav class="hidden lg:flex items-center gap-7 text-sm font-semibold text-slate-700">
-        <a href="#home" class="text-brand-agriGreen hover:text-brand-ochreGold transition font-bold">Home</a>
-        <a href="#about" class="hover:text-brand-agriGreen transition">About Us</a>
-        <a href="#symbolism" class="hover:text-brand-agriGreen transition">Brand Architecture</a>
-        <a href="#offerings" class="hover:text-brand-agriGreen transition">Core Offerings</a>
-        <a href="#compliance" class="hover:text-brand-agriGreen transition">Compliance</a>
-        <a href="#rfq" class="hover:text-brand-agriGreen transition">RFQ Desk</a>
+      <nav class="hidden lg:flex items-center gap-7 text-sm font-semibold text-slate-700" aria-label="Main">
+        <a href="#home" class="nav-link hover:text-brand-agriGreen transition">Home</a>
+        <a href="#about" class="nav-link hover:text-brand-agriGreen transition">About Us</a>
+        <a href="#offerings" class="nav-link hover:text-brand-agriGreen transition">Products</a>
+        <a href="#process" class="nav-link hover:text-brand-agriGreen transition">How We Work</a>
+        <a href="#compliance" class="nav-link hover:text-brand-agriGreen transition">Compliance</a>
+        <a href="#faq" class="nav-link hover:text-brand-agriGreen transition">FAQ</a>
+        <a href="#rfq" class="nav-link hover:text-brand-agriGreen transition">Get a Quote</a>
       </nav>
 
       <!-- Pill Button -->
@@ -145,7 +220,7 @@
       </div>
 
       <!-- Mobile Button -->
-      <button id="menu-btn" class="lg:hidden text-slate-700 p-2 focus:outline-none" aria-label="Toggle Menu">
+      <button id="menu-btn" class="lg:hidden text-slate-700 p-2 rounded-lg focus-visible:ring-2 focus-visible:ring-brand-warmGold" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
         <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
         </svg>
@@ -153,17 +228,19 @@
     </div>
 
     <!-- Mobile Drawer Menu -->
-    <div id="mobile-menu" class="hidden lg:hidden border-t border-gray-100 bg-white px-6 py-5 space-y-3 font-semibold text-slate-700 shadow-xl">
-      <a href="#home" class="block py-1 text-brand-agriGreen">Home</a>
-      <a href="#about" class="block py-1 hover:text-brand-agriGreen">About Us</a>
-      <a href="#symbolism" class="block py-1 hover:text-brand-agriGreen">Brand Architecture</a>
-      <a href="#offerings" class="block py-1 hover:text-brand-agriGreen">Core Offerings</a>
-      <a href="#compliance" class="block py-1 hover:text-brand-agriGreen">Compliance</a>
-      <a href="#rfq" class="block py-1 hover:text-brand-agriGreen">RFQ Desk</a>
-      <a href="#contact" class="block mt-3 text-center bg-brand-agriGreen text-white py-2.5 rounded-full">Contact Us</a>
+    <div id="mobile-menu" class="hidden lg:hidden border-t border-gray-100 bg-white px-6 py-4 font-semibold text-slate-700 shadow-xl">
+      <a href="#home" class="block py-3 border-b border-gray-100 hover:text-brand-agriGreen">Home</a>
+      <a href="#about" class="block py-3 border-b border-gray-100 hover:text-brand-agriGreen">About Us</a>
+      <a href="#offerings" class="block py-3 border-b border-gray-100 hover:text-brand-agriGreen">Products</a>
+      <a href="#process" class="block py-3 border-b border-gray-100 hover:text-brand-agriGreen">How We Work</a>
+      <a href="#compliance" class="block py-3 border-b border-gray-100 hover:text-brand-agriGreen">Compliance</a>
+      <a href="#faq" class="block py-3 border-b border-gray-100 hover:text-brand-agriGreen">FAQ</a>
+      <a href="#rfq" class="block py-3 hover:text-brand-agriGreen">Get a Quote</a>
+      <a href="#contact" class="block mt-3 text-center bg-brand-agriGreen text-white py-3 rounded-full">Contact Us</a>
     </div>
   </header>
 
+  <main id="main">
   <!-- ================= HERO SECTION ================= -->
   <section id="home" class="hero-bg relative text-white py-20 lg:py-28 overflow-hidden">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
@@ -318,7 +395,8 @@
             <img 
               src="https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1000&q=80" 
               alt="Bhumi Varahi Storage and Warehousing Infrastructure" 
-              class="w-full h-auto object-cover transform group-hover:scale-105 transition duration-500"
+              width="1000" height="1100" loading="lazy" decoding="async"
+              class="w-full aspect-[4/5] lg:aspect-[5/6] object-cover bg-brand-darkGreen transform group-hover:scale-105 transition duration-500"
             />
             <div class="absolute bottom-4 left-4 right-4 p-4 rounded-xl bg-slate-900/90 backdrop-blur-md text-white border border-brand-warmGold/30">
               <p class="text-xs font-bold text-brand-warmGold uppercase tracking-wider font-montserrat">Direct Origin Sourcing</p>
@@ -329,7 +407,7 @@
 
         <!-- Right: Text Content -->
         <div class="lg:col-span-7 space-y-6">
-          <span class="text-brand-ochreGold font-bold text-xs uppercase tracking-widest block font-montserrat">WHO WE ARE</span>
+          <span class="text-[#8A6508] font-bold text-xs uppercase tracking-widest block font-montserrat">WHO WE ARE</span>
           
           <h2 class="text-3xl sm:text-4xl font-cinzel font-bold text-slate-900 leading-tight">
             Your Trusted Global Trade Partner &amp; Merchant Exporters
@@ -373,7 +451,7 @@
   <section id="symbolism" class="py-20 bg-slate-100/70 border-b border-gray-200">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="text-center max-w-3xl mx-auto mb-16 space-y-3">
-        <span class="text-brand-ochreGold font-bold text-xs uppercase tracking-widest block font-montserrat">CORPORATE IDENTITY</span>
+        <span class="text-[#8A6508] font-bold text-xs uppercase tracking-widest block font-montserrat">CORPORATE IDENTITY</span>
         <h2 class="text-3xl sm:text-4xl font-cinzel font-bold text-slate-900">Symbolism &amp; Architecture</h2>
         <p class="text-slate-600 text-sm sm:text-base">The structural meaning behind the Bhumi Varahi Impex insignia and trade heritage.</p>
       </div>
@@ -413,7 +491,7 @@
   <section id="offerings" class="py-20 bg-white border-b border-gray-200">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="text-center max-w-3xl mx-auto mb-16 space-y-3">
-        <span class="text-brand-ochreGold font-bold text-xs uppercase tracking-widest block font-montserrat">PORTFOLIO</span>
+        <span class="text-[#8A6508] font-bold text-xs uppercase tracking-widest block font-montserrat">PORTFOLIO</span>
         <h2 class="text-3xl sm:text-4xl font-cinzel font-bold text-slate-900">Core Commodity Divisions</h2>
         <p class="text-slate-600 text-sm sm:text-base">Supplying premium origin commodities tailored to buyer specifications and international trade standards.</p>
       </div>
@@ -423,7 +501,7 @@
         <div class="bg-slate-50 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg border border-gray-200 transition group flex flex-col justify-between">
           <div>
             <div class="h-52 overflow-hidden relative">
-              <img src="https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80" alt="Rice Export" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">
+              <img src="https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80" loading="lazy" decoding="async" width="800" height="420" alt="Rice Export" class="w-full h-full object-cover bg-brand-darkGreen group-hover:scale-105 transition duration-500">
               <span class="absolute top-3 left-3 bg-brand-agriGreen/90 text-white text-xs font-semibold px-2.5 py-1 rounded-md backdrop-blur-sm">Grade A Certified</span>
             </div>
             <div class="p-6 space-y-3">
@@ -447,7 +525,7 @@
         <div class="bg-slate-50 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg border border-gray-200 transition group flex flex-col justify-between">
           <div>
             <div class="h-52 overflow-hidden relative">
-              <img src="https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=800&q=80" alt="Indian Spices" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">
+              <img src="https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=800&q=80" loading="lazy" decoding="async" width="800" height="420" alt="Indian Spices" class="w-full h-full object-cover bg-brand-darkGreen group-hover:scale-105 transition duration-500">
               <span class="absolute top-3 left-3 bg-brand-agriGreen/90 text-white text-xs font-semibold px-2.5 py-1 rounded-md backdrop-blur-sm">Lab Tested High Curcumin</span>
             </div>
             <div class="p-6 space-y-3">
@@ -471,7 +549,7 @@
         <div class="bg-slate-50 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg border border-gray-200 transition group flex flex-col justify-between">
           <div>
             <div class="h-52 overflow-hidden relative">
-              <img src="https://images.unsplash.com/photo-1590496793907-4d66e2994b4d?auto=format&fit=crop&w=800&q=80" onerror="this.onerror=null;this.src='images/industrial.svg'" alt="Container ship being loaded by cranes at an industrial port" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">
+              <img src="https://images.unsplash.com/photo-1590496793907-4d66e2994b4d?auto=format&fit=crop&w=800&q=80" loading="lazy" decoding="async" width="800" height="420" onerror="this.onerror=null;this.src='images/industrial.svg'" alt="Container ship being loaded by cranes at an industrial port" class="w-full h-full object-cover bg-brand-darkGreen group-hover:scale-105 transition duration-500">
               <span class="absolute top-3 left-3 bg-brand-agriGreen/90 text-white text-xs font-semibold px-2.5 py-1 rounded-md backdrop-blur-sm">OEM &amp; Custom Sourcing</span>
             </div>
             <div class="p-6 space-y-3">
@@ -500,7 +578,7 @@
       <div class="flex flex-wrap items-center justify-between gap-6 text-center md:text-left">
         <div>
           <h3 class="text-lg font-bold font-cinzel text-slate-900">Institutional Accreditations &amp; Testing</h3>
-          <p class="text-xs text-slate-500 mt-1">Conforming to DGFT, Port of Origin, and destination regulatory requirements.</p>
+          <p class="text-xs text-slate-600 mt-1">Conforming to DGFT, Port of Origin, and destination regulatory requirements.</p>
         </div>
         <div class="flex flex-wrap items-center gap-3">
           <span class="px-4 py-2 bg-white rounded-lg border border-gray-200 font-bold text-xs text-slate-700 shadow-sm">APEDA Regd.</span>
@@ -513,13 +591,107 @@
     </div>
   </section>
 
+
+  <!-- ================= HOW WE WORK ================= -->
+  <section id="process" class="py-20 bg-white border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="max-w-3xl mb-14 text-center mx-auto space-y-3">
+        <span class="text-[#8A6508] font-bold text-xs uppercase tracking-widest block font-montserrat">HOW WE WORK</span>
+        <h2 class="text-3xl sm:text-4xl font-cinzel font-bold text-slate-900">From Inquiry to Delivery</h2>
+        <p class="text-slate-600">A clear, documented five-step export process, so you always know where your order stands.</p>
+      </div>
+      <ol class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+        <li class="relative p-6 rounded-2xl bg-slate-50 border border-gray-200 hover:border-brand-warmGold/60 hover:shadow-md transition">
+          <span class="flex items-center justify-center w-10 h-10 rounded-full bg-brand-agriGreen text-brand-goldLight font-bold font-montserrat">1</span>
+          <h3 class="mt-4 font-bold text-slate-900">Inquiry &amp; Specs</h3>
+          <p class="mt-2 text-sm text-slate-600 leading-relaxed">Share commodity, grade, quantity, packaging and destination port through our RFQ desk.</p>
+        </li>
+        <li class="relative p-6 rounded-2xl bg-slate-50 border border-gray-200 hover:border-brand-warmGold/60 hover:shadow-md transition">
+          <span class="flex items-center justify-center w-10 h-10 rounded-full bg-brand-agriGreen text-brand-goldLight font-bold font-montserrat">2</span>
+          <h3 class="mt-4 font-bold text-slate-900">Quotation</h3>
+          <p class="mt-2 text-sm text-slate-600 leading-relaxed">Receive a detailed offer with pricing, Incoterms (FOB / CFR / CIF) and shipment timeline.</p>
+        </li>
+        <li class="relative p-6 rounded-2xl bg-slate-50 border border-gray-200 hover:border-brand-warmGold/60 hover:shadow-md transition">
+          <span class="flex items-center justify-center w-10 h-10 rounded-full bg-brand-agriGreen text-brand-goldLight font-bold font-montserrat">3</span>
+          <h3 class="mt-4 font-bold text-slate-900">Contract</h3>
+          <p class="mt-2 text-sm text-slate-600 leading-relaxed">Confirm specifications, quantity, payment terms and delivery schedule in a written sales contract.</p>
+        </li>
+        <li class="relative p-6 rounded-2xl bg-slate-50 border border-gray-200 hover:border-brand-warmGold/60 hover:shadow-md transition">
+          <span class="flex items-center justify-center w-10 h-10 rounded-full bg-brand-agriGreen text-brand-goldLight font-bold font-montserrat">4</span>
+          <h3 class="mt-4 font-bold text-slate-900">Quality &amp; Documents</h3>
+          <p class="mt-2 text-sm text-slate-600 leading-relaxed">Pre-shipment inspection, phytosanitary and fumigation certificates, and export documentation.</p>
+        </li>
+        <li class="relative p-6 rounded-2xl bg-slate-50 border border-gray-200 hover:border-brand-warmGold/60 hover:shadow-md transition">
+          <span class="flex items-center justify-center w-10 h-10 rounded-full bg-brand-agriGreen text-brand-goldLight font-bold font-montserrat">5</span>
+          <h3 class="mt-4 font-bold text-slate-900">Shipment</h3>
+          <p class="mt-2 text-sm text-slate-600 leading-relaxed">Container loading at Kakinada, Visakhapatnam or Chennai, with tracking until arrival.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ================= FAQ ================= -->
+  <section id="faq" class="py-20 bg-slate-100/70 border-b border-gray-200">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="mb-10 text-center space-y-3">
+        <span class="text-[#8A6508] font-bold text-xs uppercase tracking-widest block font-montserrat">BUYER FAQ</span>
+        <h2 class="text-3xl sm:text-4xl font-cinzel font-bold text-slate-900">Frequently Asked Questions</h2>
+      </div>
+      <div class="space-y-3">
+        <details class="faq group bg-white rounded-xl border border-gray-200 open:border-brand-warmGold/60 open:shadow-sm">
+          <summary class="flex items-center justify-between gap-4 cursor-pointer list-none px-5 py-4 font-semibold text-slate-900">
+            <span>Which products do you export?</span>
+            <svg class="w-5 h-5 shrink-0 text-brand-agriGreen transition-transform group-open:rotate-45" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
+          </summary>
+          <p class="px-5 pb-5 text-sm text-slate-600 leading-relaxed">Rice (1010 white, parboiled, broken and 1121 basmati), Indian spices such as Nizamabad turmeric and Guntur Teja red chilli, pulses and grains, and custom industrial goods on request.</p>
+        </details>
+        <details class="faq group bg-white rounded-xl border border-gray-200 open:border-brand-warmGold/60 open:shadow-sm">
+          <summary class="flex items-center justify-between gap-4 cursor-pointer list-none px-5 py-4 font-semibold text-slate-900">
+            <span>Which Incoterms do you offer?</span>
+            <svg class="w-5 h-5 shrink-0 text-brand-agriGreen transition-transform group-open:rotate-45" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
+          </summary>
+          <p class="px-5 pb-5 text-sm text-slate-600 leading-relaxed">We quote on FOB, CFR and CIF terms. Tell us your discharge port in the RFQ form and we will price accordingly.</p>
+        </details>
+        <details class="faq group bg-white rounded-xl border border-gray-200 open:border-brand-warmGold/60 open:shadow-sm">
+          <summary class="flex items-center justify-between gap-4 cursor-pointer list-none px-5 py-4 font-semibold text-slate-900">
+            <span>Which ports do you ship from?</span>
+            <svg class="w-5 h-5 shrink-0 text-brand-agriGreen transition-transform group-open:rotate-45" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
+          </summary>
+          <p class="px-5 pb-5 text-sm text-slate-600 leading-relaxed">Shipments are loaded at Kakinada, Visakhapatnam and Chennai ports on the east coast of India.</p>
+        </details>
+        <details class="faq group bg-white rounded-xl border border-gray-200 open:border-brand-warmGold/60 open:shadow-sm">
+          <summary class="flex items-center justify-between gap-4 cursor-pointer list-none px-5 py-4 font-semibold text-slate-900">
+            <span>How is the cargo packed?</span>
+            <svg class="w-5 h-5 shrink-0 text-brand-agriGreen transition-transform group-open:rotate-45" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
+          </summary>
+          <p class="px-5 pb-5 text-sm text-slate-600 leading-relaxed">Packaging follows buyer specification, for example 25 kg or 50 kg PP bags, with custom branding and marking on request.</p>
+        </details>
+        <details class="faq group bg-white rounded-xl border border-gray-200 open:border-brand-warmGold/60 open:shadow-sm">
+          <summary class="flex items-center justify-between gap-4 cursor-pointer list-none px-5 py-4 font-semibold text-slate-900">
+            <span>How is quality verified?</span>
+            <svg class="w-5 h-5 shrink-0 text-brand-agriGreen transition-transform group-open:rotate-45" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
+          </summary>
+          <p class="px-5 pb-5 text-sm text-slate-600 leading-relaxed">Cargo is inspected before dispatch, and third-party inspection by agencies such as SGS or Bureau Veritas can be arranged along with phytosanitary and fumigation certificates.</p>
+        </details>
+        <details class="faq group bg-white rounded-xl border border-gray-200 open:border-brand-warmGold/60 open:shadow-sm">
+          <summary class="flex items-center justify-between gap-4 cursor-pointer list-none px-5 py-4 font-semibold text-slate-900">
+            <span>How quickly will I get a quotation?</span>
+            <svg class="w-5 h-5 shrink-0 text-brand-agriGreen transition-transform group-open:rotate-45" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
+          </summary>
+          <p class="px-5 pb-5 text-sm text-slate-600 leading-relaxed">Our export desk responds to complete RFQs within 24 business hours.</p>
+        </details>
+      </div>
+      <p class="mt-8 text-center text-sm text-slate-600">Have another question? <a href="#rfq" class="font-semibold text-brand-agriGreen underline underline-offset-4 hover:text-[#8A6508]">Send us an inquiry</a>.</p>
+    </div>
+  </section>
+
   <!-- ================= INTERACTIVE RFQ FORM ================= -->
   <section id="rfq" class="py-20 bg-brand-darkGreen text-white">
     <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="text-center space-y-3 mb-12">
         <span class="text-brand-warmGold font-bold text-xs uppercase tracking-widest block font-montserrat">DIRECT INQUIRY</span>
         <h2 class="text-3xl font-cinzel font-bold">Request for Quotation (RFQ)</h2>
-        <p class="text-emerald-100 text-sm max-w-xl mx-auto">Submit your target commodity, volume, destination port, and delivery incoterms. Our export desk responds within 24 business hours.</p>
+        <p class="text-emerald-100 text-sm max-w-xl mx-auto">Fields marked * are required. Submit your target commodity, volume, destination port, and delivery incoterms. Our export desk responds within 24 business hours.</p>
       </div>
 
       <form id="rfqForm" class="glass-card rounded-2xl p-8 space-y-6">
@@ -527,15 +699,15 @@
         <input type="checkbox" name="botcheck" class="hidden" tabindex="-1" autocomplete="off" />
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <div>
-            <label class="block text-xs font-bold uppercase tracking-wider text-emerald-200 mb-2">Company / Buyer Name *</label>
-            <input type="text" id="buyerName" name="name" required placeholder="e.g. Al-Mansoor Trading LLC" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-emerald-200/50 focus:outline-none focus:border-brand-warmGold text-sm" />
+            <label for="buyerName" class="block text-xs font-bold uppercase tracking-wider text-emerald-200 mb-2">Company / Buyer Name *</label>
+            <input type="text" id="buyerName" name="name" required autocomplete="organization" placeholder="e.g. Al-Mansoor Trading LLC" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-emerald-200/50 focus:outline-none focus:border-brand-warmGold text-sm" />
           </div>
           <div>
-            <label class="block text-xs font-bold uppercase tracking-wider text-emerald-200 mb-2">Work Email *</label>
-            <input type="email" id="buyerEmail" name="email" required placeholder="procurement@buyer.com" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-emerald-200/50 focus:outline-none focus:border-brand-warmGold text-sm" />
+            <label for="buyerEmail" class="block text-xs font-bold uppercase tracking-wider text-emerald-200 mb-2">Work Email *</label>
+            <input type="email" id="buyerEmail" name="email" required autocomplete="email" placeholder="procurement@buyer.com" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-emerald-200/50 focus:outline-none focus:border-brand-warmGold text-sm" />
           </div>
           <div>
-            <label class="block text-xs font-bold uppercase tracking-wider text-emerald-200 mb-2">Commodity / Product Desk</label>
+            <label for="commoditySelect" class="block text-xs font-bold uppercase tracking-wider text-emerald-200 mb-2">Commodity / Product Desk</label>
             <select id="commoditySelect" name="commodity" class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-white/20 text-white text-sm focus:outline-none focus:border-brand-warmGold">
               <option value="1010 Non-Basmati Rice">1010 Non-Basmati Rice (Parboiled / Raw)</option>
               <option value="1121 Basmati Rice">1121 Basmati Rice (Steam / Sella)</option>
@@ -545,13 +717,21 @@
             </select>
           </div>
           <div>
-            <label class="block text-xs font-bold uppercase tracking-wider text-emerald-200 mb-2">Required Quantity (Metric Tons)</label>
+            <label for="quantity" class="block text-xs font-bold uppercase tracking-wider text-emerald-200 mb-2">Required Quantity (Metric Tons)</label>
             <input type="text" id="quantity" name="quantity" placeholder="e.g. 500 MT (20 FCL)" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-emerald-200/50 focus:outline-none focus:border-brand-warmGold text-sm" />
+          </div>
+          <div>
+            <label for="country" class="block text-xs font-bold uppercase tracking-wider text-emerald-200 mb-2">Destination Country</label>
+            <input type="text" id="country" name="country" autocomplete="country-name" placeholder="e.g. United Arab Emirates" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-emerald-200/50 focus:outline-none focus:border-brand-warmGold text-sm" />
+          </div>
+          <div>
+            <label for="phone" class="block text-xs font-bold uppercase tracking-wider text-emerald-200 mb-2">Phone / WhatsApp (optional)</label>
+            <input type="tel" id="phone" name="phone" autocomplete="tel" placeholder="+971 50 123 4567" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-emerald-200/50 focus:outline-none focus:border-brand-warmGold text-sm" />
           </div>
         </div>
 
         <div>
-          <label class="block text-xs font-bold uppercase tracking-wider text-emerald-200 mb-2">Destination Port &amp; Packaging Specs (CIF / FOB / CFR)</label>
+          <label for="rfqNotes" class="block text-xs font-bold uppercase tracking-wider text-emerald-200 mb-2">Destination Port &amp; Packaging Specs (CIF / FOB / CFR)</label>
           <textarea id="rfqNotes" name="notes" rows="3" placeholder="Specify discharge port (e.g. Jebel Ali, Port Klang, Djibouti) and bag size (25kg / 50kg PP bags)..." class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-emerald-200/50 focus:outline-none focus:border-brand-warmGold text-sm"></textarea>
         </div>
 
@@ -562,8 +742,44 @@
     </div>
   </section>
 
+
+  <!-- ================= CONTACT ================= -->
+  <section id="contact" class="py-20 bg-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="max-w-3xl mb-12 text-center mx-auto space-y-3">
+        <span class="text-[#8A6508] font-bold text-xs uppercase tracking-widest block font-montserrat">CONTACT US</span>
+        <h2 class="text-3xl sm:text-4xl font-cinzel font-bold text-slate-900">Talk to Our Export Desk</h2>
+        <p class="text-slate-600">For bulk quotations, distributor partnerships or bilateral trade agreements.</p>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <a href="mailto:info@bhumivarahiimpex.com" class="group p-7 rounded-2xl border border-gray-200 bg-slate-50 hover:border-brand-agriGreen hover:shadow-lg transition">
+          <span class="flex items-center justify-center w-12 h-12 rounded-xl bg-brand-agriGreen text-brand-goldLight" aria-hidden="true">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l9 6 9-6M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+          </span>
+          <h3 class="mt-5 font-bold text-slate-900">Email</h3>
+          <p class="mt-1 text-brand-agriGreen font-semibold group-hover:underline underline-offset-4 break-all">info@bhumivarahiimpex.com</p>
+        </a>
+        <div class="p-7 rounded-2xl border border-gray-200 bg-slate-50">
+          <span class="flex items-center justify-center w-12 h-12 rounded-xl bg-brand-agriGreen text-brand-goldLight" aria-hidden="true">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 17h18l-2 4H5l-2-4zM6 17V9h12v8M9 9V5h6v4"/></svg>
+          </span>
+          <h3 class="mt-5 font-bold text-slate-900">Ports of Loading</h3>
+          <p class="mt-1 text-slate-600">Kakinada &bull; Visakhapatnam &bull; Chennai, India</p>
+        </div>
+        <a href="#rfq" class="group p-7 rounded-2xl border border-brand-warmGold/50 bg-brand-darkGreen text-white hover:shadow-lg transition">
+          <span class="flex items-center justify-center w-12 h-12 rounded-xl bg-brand-warmGold text-slate-950" aria-hidden="true">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </span>
+          <h3 class="mt-5 font-bold">Quote in 24 Business Hours</h3>
+          <p class="mt-1 text-emerald-100">Send a formal RFQ <span class="inline-block group-hover:translate-x-1 transition-transform">&rarr;</span></p>
+        </a>
+      </div>
+    </div>
+  </section>
+  </main>
+
   <!-- ================= FOOTER ================= -->
-  <footer id="contact" class="bg-slate-950 text-slate-400 py-16 border-t-2 border-brand-agriGreen text-sm">
+  <footer class="bg-slate-950 text-slate-400 py-16 border-t-2 border-brand-agriGreen text-sm">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-4 gap-10">
       
       <!-- Footer Logo & Corporate Details -->
@@ -606,18 +822,20 @@
       </div>
 
       <div>
-        <h4 class="text-white font-bold text-xs uppercase tracking-wider mb-3 font-montserrat">Quick Navigation</h4>
+        <h2 class="text-white font-bold text-xs uppercase tracking-wider mb-3 font-montserrat">Quick Navigation</h2>
         <ul class="space-y-2 text-xs">
           <li><a href="#home" class="hover:text-white transition">Home</a></li>
           <li><a href="#about" class="hover:text-white transition">About Us</a></li>
           <li><a href="#symbolism" class="hover:text-white transition">Brand Architecture</a></li>
           <li><a href="#offerings" class="hover:text-white transition">Commodities &amp; Products</a></li>
+          <li><a href="#process" class="hover:text-white transition">How We Work</a></li>
+          <li><a href="#faq" class="hover:text-white transition">FAQ</a></li>
           <li><a href="#rfq" class="hover:text-white transition">RFQ Desk</a></li>
         </ul>
       </div>
 
       <div>
-        <h4 class="text-white font-bold text-xs uppercase tracking-wider mb-3 font-montserrat">Export Desks</h4>
+        <h2 class="text-white font-bold text-xs uppercase tracking-wider mb-3 font-montserrat">Export Desks</h2>
         <ul class="space-y-2 text-xs">
           <li>Agricultural Commodities (Rice &amp; Grains)</li>
           <li>Whole &amp; Ground Spices</li>
@@ -627,7 +845,7 @@
       </div>
 
       <div>
-        <h4 class="text-white font-bold text-xs uppercase tracking-wider mb-3 font-montserrat">Official Inquiries</h4>
+        <h2 class="text-white font-bold text-xs uppercase tracking-wider mb-3 font-montserrat">Official Inquiries</h2>
         <p class="text-xs text-slate-400 leading-relaxed mb-3">
           For bilateral trade agreements, distributor partnerships, or bulk quotations:
         </p>
@@ -637,20 +855,63 @@
 
     </div>
 
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12 pt-6 border-t border-slate-900 text-center text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12 pt-6 border-t border-slate-900 text-center text-xs text-slate-400">
       &copy; 2026 Bhumi Varahi Impex Private Limited. All Rights Reserved.
     </div>
+  <a href="#home" id="toTop" aria-label="Back to top" class="fixed bottom-5 right-5 z-40 w-11 h-11 rounded-full bg-brand-agriGreen text-brand-goldLight border border-brand-warmGold/40 shadow-lg flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300 hover:bg-brand-darkGreen">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+  </a>
+
   </footer>
+
 
   <!-- ================= INTERACTIVE JAVASCRIPT ================= -->
   <script>
     // Mobile Drawer Toggle
     const menuBtn = document.getElementById('menu-btn');
     const mobileMenu = document.getElementById('mobile-menu');
+    function setMenu(open) {
+      mobileMenu.classList.toggle('hidden', !open);
+      menuBtn.setAttribute('aria-expanded', String(open));
+      menuBtn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    }
+    menuBtn.addEventListener('click', () => setMenu(mobileMenu.classList.contains('hidden')));
+    mobileMenu.querySelectorAll('a').forEach(a => a.addEventListener('click', () => setMenu(false)));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') setMenu(false); });
 
-    menuBtn.addEventListener('click', () => {
-      mobileMenu.classList.toggle('hidden');
-    });
+    // Header shadow + back-to-top visibility
+    const header = document.getElementById('siteHeader');
+    const toTop = document.getElementById('toTop');
+    function onScroll() {
+      const y = window.scrollY;
+      header.classList.toggle('header-scrolled', y > 10);
+      const show = y > 600;
+      toTop.classList.toggle('opacity-0', !show);
+      toTop.classList.toggle('pointer-events-none', !show);
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+
+    // Highlight the menu item for the section in view
+    const navLinks = [...document.querySelectorAll('.nav-link')];
+    if ('IntersectionObserver' in window) {
+      const spy = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          navLinks.forEach(l => l.classList.toggle('active', l.getAttribute('href') === '#' + entry.target.id));
+        });
+      }, { rootMargin: '-45% 0px -50% 0px' });
+      document.querySelectorAll('main section[id]').forEach(sec => spy.observe(sec));
+
+      // Gentle fade-in of sections as they scroll into view
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const items = document.querySelectorAll('main section:not(#home) > div');
+        const reveal = new IntersectionObserver(entries => {
+          entries.forEach(entry => { if (entry.isIntersecting) { entry.target.classList.add('in'); reveal.unobserve(entry.target); } });
+        }, { threshold: 0.08 });
+        items.forEach(el => { el.classList.add('reveal'); reveal.observe(el); });
+      }
+    }
 
     // Commodity Pre-selection Helpers
     function preselectCommodity(commodity) {
@@ -702,7 +963,7 @@
       const commodity = data.get('commodity');
 
       if (!WEB3FORMS_KEY || WEB3FORMS_KEY.startsWith('YOUR_')) {
-        const body = `Company / Buyer: ${name}\nEmail: ${data.get('email')}\nCommodity: ${commodity}\nQuantity: ${data.get('quantity')}\nPort & packaging: ${data.get('notes')}`;
+        const body = `Company / Buyer: ${name}\nEmail: ${data.get('email')}\nPhone / WhatsApp: ${data.get('phone') || '-'}\nDestination country: ${data.get('country') || '-'}\nCommodity: ${commodity}\nQuantity: ${data.get('quantity')}\nPort & packaging: ${data.get('notes')}`;
         window.location.href = `mailto:${RFQ_INBOX}?subject=${encodeURIComponent('RFQ: ' + commodity + ' - ' + name)}&body=${encodeURIComponent(body)}`;
         return;
       }
