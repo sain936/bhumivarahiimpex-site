@@ -124,3 +124,47 @@ function acknowledge_(p) {
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
+
+// ===== WEEKLY SUMMARY =====
+// Run setupWeeklySummary() once from the editor. After that, info@ gets
+// a summary every Monday around 9 AM IST. Run sendWeeklySummary() any time to test.
+function setupWeeklySummary() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'sendWeeklySummary')
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('sendWeeklySummary').timeBased()
+    .onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(9).inTimezone('Asia/Kolkata').create();
+  return 'Weekly summary scheduled for Mondays at about 9 AM IST.';
+}
+
+function sendWeeklySummary() {
+  const sheet = getSheet_();
+  const data = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, HEADERS.length).getValues() : [];
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 864e5);
+  const isDate = v => Object.prototype.toString.call(v) === '[object Date]';
+  const rows = data.filter(r => isDate(r[0]) && (r[1] || r[2]));
+  const newThisWeek = rows.filter(r => r[0] >= weekAgo);
+  const count = s => rows.filter(r => String(r[8] || 'New') === s).length;
+  const open = rows.filter(r => ['New', 'Contacted', 'Quoted'].includes(String(r[8] || 'New')))
+                   .sort((a, b) => a[0] - b[0]);
+  const esc = s => String(s == null || s === '' ? '-' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const fmt = d => Utilities.formatDate(d, 'Asia/Kolkata', 'dd MMM');
+  const days = d => Math.floor((now - d) / 864e5);
+  const ref = r => (String(r[9]).match(/BV-\d{6}-\d{6}/) || [''])[0];
+  const stat = (label, n, bg) => `<td style="padding:10px;text-align:center;background:${bg};border-radius:6px;"><div style="font-size:22px;font-weight:bold;color:#1B4D3E;">${n}</div><div style="font-size:11px;color:#5A6A72;text-transform:uppercase;letter-spacing:1px;">${label}</div></td>`;
+  const th = t => `<th style="text-align:left;padding:6px 8px;background:#1B4D3E;color:#fff;font-size:12px;">${t}</th>`;
+  const td = (t, extra) => `<td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:12px;${extra || ''}">${t}</td>`;
+  const openRows = open.slice(0, 30).map(r => `<tr>${td(fmt(r[0]))}${td(esc(ref(r)))}${td(esc(r[1]))}${td(esc(r[5]))}${td(esc(r[6]))}${td(esc(r[4]))}${td(esc(r[8] || 'New'))}${td(days(r[0]) + ' d', days(r[0]) > 3 && String(r[8] || 'New') === 'New' ? 'color:#b91c1c;font-weight:bold;' : '')}</tr>`).join('');
+  const html = `<div style="font-family:Arial,sans-serif;max-width:720px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+    <div style="background:#1B4D3E;color:#E5C158;padding:14px 18px;font-weight:bold;letter-spacing:1px;">WEEKLY RFQ SUMMARY · ${fmt(weekAgo)} – ${fmt(now)}</div>
+    <div style="padding:16px 18px;">
+      <table style="width:100%;border-collapse:separate;border-spacing:6px;"><tr>
+        ${stat('New this week', newThisWeek.length, '#F8F5EC')}${stat('Awaiting reply', count('New'), '#FEF3C7')}${stat('Contacted', count('Contacted'), '#F1F5F9')}${stat('Quoted', count('Quoted'), '#F1F5F9')}${stat('Won', count('Won'), '#DCFCE7')}${stat('Lost', count('Lost'), '#FEE2E2')}
+      </tr></table>
+      <h3 style="color:#1B4D3E;font-size:15px;margin:18px 0 8px;">Open requests (${open.length})</h3>
+      ${open.length ? `<table style="width:100%;border-collapse:collapse;"><tr>${th('Received')}${th('Ref')}${th('Buyer')}${th('Commodity')}${th('Qty')}${th('Country')}${th('Status')}${th('Age')}</tr>${openRows}</table>` : '<p style="color:#5A6A72;font-size:13px;">No open requests. Nice work.</p>'}
+      <p style="color:#5A6A72;font-size:12px;margin-top:14px;">Red ages are "New" requests older than 3 days. Update the Status column in the sheet as you follow up: <a href="${SpreadsheetApp.getActiveSpreadsheet().getUrl()}" style="color:#1B4D3E;">open the RFQ sheet</a>.</p>
+    </div></div>`;
+  MailApp.sendEmail({ to: NOTIFY_EMAIL, subject: `Weekly RFQ summary: ${newThisWeek.length} new, ${open.length} open`, htmlBody: html, name: 'Bhumi Varahi Website' });
+}

@@ -30,3 +30,12 @@ and an email alert goes to info@bhumivarahiimpex.com.
 
 Use **Deploy → Manage deployments → Edit → Version: New version → Deploy**,
 so the same URL keeps working.
+
+## Weekly summary email
+
+Every Monday at about 9 AM IST, info@ gets a summary: new requests this week,
+counts by status, and a list of open requests (old "New" ones flagged in red).
+
+One-time setup: in Apps Script, choose **setupWeeklySummary** in the function
+dropdown and click **Run**, then allow the permission. To see it straight away,
+run **sendWeeklySummary**.
