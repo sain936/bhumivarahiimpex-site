@@ -1,6 +1,8 @@
-/* Country dialling codes for the RFQ phone field.
-   Fills every <select data-dialcodes>, guesses the visitor's country, follows the
-   "Destination country" field, and joins code + number into the form's "phone" value. */
+/* Flag pickers for the RFQ forms:
+   - <select data-dialcodes>      phone country code (joined into the "phone" value on submit)
+   - <select data-country-picker> destination country (value = English country name)
+   - <select data-port-picker>    destination port, filtered by the chosen country
+   The native <select> stays in the page (visually hidden) so browser "required" checks still work. */
 (function () {
   var C = [
     ['AE','United Arab Emirates','971'],['SA','Saudi Arabia','966'],['OM','Oman','968'],['QA','Qatar','974'],
@@ -69,12 +71,54 @@
     return '';
   }
 
-  var CSS = '.dp{position:relative;flex-shrink:0}' +
-    '.dp-btn{display:flex;align-items:center;gap:8px;height:100%;min-height:46px;padding:0 10px 0 12px;border-radius:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;font-size:14px;cursor:pointer;white-space:nowrap}' +
+  // Main seaports per country. Landlocked countries list the usual transit ports.
+  var PORTS = {
+    AE: ['Jebel Ali', 'Khalifa Port (Abu Dhabi)', 'Sharjah (Khalid Port)', 'Khor Fakkan', 'Fujairah'],
+    SA: ['Jeddah', 'Dammam (King Abdulaziz Port)', 'King Abdullah Port', 'Jubail', 'Riyadh Dry Port'],
+    OM: ['Sohar', 'Salalah', 'Muscat (Sultan Qaboos)', 'Duqm'], QA: ['Hamad Port'], KW: ['Shuwaikh', 'Shuaiba'],
+    BH: ['Khalifa Bin Salman Port'], IN: ['Nhava Sheva (JNPT)', 'Mundra', 'Kakinada', 'Visakhapatnam', 'Chennai', 'Kolkata'],
+    AF: ['Via Karachi', 'Via Bandar Abbas', 'Kabul ICD'], DZ: ['Algiers', 'Oran', 'Annaba', 'Béjaïa'], AO: ['Luanda', 'Lobito'],
+    AU: ['Sydney', 'Melbourne', 'Brisbane', 'Fremantle', 'Adelaide'], AT: ['Via Hamburg', 'Via Koper'],
+    BD: ['Chittagong', 'Mongla'], BE: ['Antwerp', 'Zeebrugge'], BJ: ['Cotonou'], BR: ['Santos', 'Paranaguá', 'Rio de Janeiro'],
+    BF: ['Via Abidjan', 'Via Lomé', 'Via Tema', 'Ouagadougou ICD'], KH: ['Sihanoukville', 'Phnom Penh'], CM: ['Douala', 'Kribi'],
+    CA: ['Vancouver', 'Montreal', 'Toronto', 'Halifax'], CN: ['Shanghai', 'Ningbo', 'Qingdao', 'Shenzhen', 'Tianjin', 'Guangzhou'],
+    CG: ['Pointe-Noire'], CD: ['Matadi', 'Via Dar es Salaam', 'Via Mombasa'], CI: ['Abidjan', 'San-Pédro'], DJ: ['Djibouti'],
+    EG: ['Alexandria', 'Port Said', 'Damietta', 'Sokhna'], ET: ['Via Djibouti', 'Modjo Dry Port'], FJ: ['Suva', 'Lautoka'],
+    FR: ['Le Havre', 'Marseille-Fos'], GA: ['Libreville (Owendo)'], GM: ['Banjul'], DE: ['Hamburg', 'Bremerhaven'],
+    GH: ['Tema', 'Takoradi'], GN: ['Conakry'], HK: ['Hong Kong'], ID: ['Jakarta (Tanjung Priok)', 'Surabaya', 'Belawan'],
+    IR: ['Bandar Abbas', 'Bushehr', 'Chabahar'], IQ: ['Umm Qasr'], IE: ['Dublin', 'Cork'], IT: ['Genoa', 'La Spezia', 'Naples'],
+    JP: ['Tokyo', 'Yokohama', 'Osaka', 'Kobe', 'Nagoya'], JO: ['Aqaba'], KE: ['Mombasa', 'Lamu'], LB: ['Beirut'], LR: ['Monrovia'],
+    LY: ['Tripoli', 'Misrata', 'Benghazi'], MG: ['Toamasina'], MW: ['Via Beira', 'Via Nacala', 'Via Dar es Salaam'],
+    MY: ['Port Klang', 'Penang', 'Pasir Gudang', 'Tanjung Pelepas'], MV: ['Malé'], ML: ['Via Dakar', 'Via Abidjan', 'Bamako ICD'],
+    MR: ['Nouakchott', 'Nouadhibou'], MU: ['Port Louis'], MA: ['Casablanca', 'Tanger Med', 'Agadir'], MZ: ['Maputo', 'Beira', 'Nacala'],
+    MM: ['Yangon'], NP: ['Via Kolkata', 'Birgunj ICD'], NL: ['Rotterdam', 'Amsterdam'], NZ: ['Auckland', 'Tauranga', 'Lyttelton'],
+    NE: ['Via Cotonou', 'Via Lomé', 'Niamey ICD'], NG: ['Lagos (Apapa)', 'Lagos (Tin Can Island)', 'Onne', 'Lekki'],
+    PK: ['Karachi', 'Port Qasim'], PH: ['Manila', 'Cebu', 'Davao'], PL: ['Gdańsk', 'Gdynia'], PT: ['Lisbon', 'Leixões', 'Sines'],
+    RU: ['Novorossiysk', 'St Petersburg', 'Vladivostok'], RW: ['Via Mombasa', 'Via Dar es Salaam', 'Kigali ICD'], SN: ['Dakar'],
+    SC: ['Port Victoria'], SL: ['Freetown'], SG: ['Singapore'], SO: ['Mogadishu', 'Berbera', 'Bosaso'],
+    ZA: ['Durban', 'Cape Town', 'Gqeberha (Port Elizabeth)'], KR: ['Busan', 'Incheon'], ES: ['Valencia', 'Algeciras', 'Barcelona'],
+    LK: ['Colombo'], SD: ['Port Sudan'], SE: ['Gothenburg'], CH: ['Via Rotterdam', 'Via Antwerp', 'Basel'], SY: ['Latakia', 'Tartus'],
+    TW: ['Kaohsiung', 'Keelung'], TZ: ['Dar es Salaam', 'Zanzibar', 'Tanga'], TH: ['Laem Chabang', 'Bangkok'], TG: ['Lomé'],
+    TN: ['Radès', 'Sfax', 'Sousse'], TR: ['Mersin', 'Istanbul (Ambarli)', 'Izmir'], UG: ['Via Mombasa', 'Via Dar es Salaam', 'Kampala ICD'],
+    UA: ['Odesa', 'Chornomorsk'], GB: ['Felixstowe', 'Southampton', 'London Gateway', 'Liverpool'],
+    US: ['New York / New Jersey', 'Houston', 'Savannah', 'Los Angeles / Long Beach', 'Oakland'], UZ: ['Via Bandar Abbas', 'Tashkent ICD'],
+    VN: ['Ho Chi Minh City (Cat Lai)', 'Haiphong'], YE: ['Aden', 'Hodeidah', 'Mukalla'], ZM: ['Via Dar es Salaam', 'Via Durban', 'Lusaka ICD'],
+    ZW: ['Via Beira', 'Via Durban', 'Harare ICD']
+  };
+  var OTHER = '__other';
+  var byName = {}; C.forEach(function (c) { byName[c[1]] = c; });
+  var SORTED = C.slice(7).sort(function (a, b) { return a[1].localeCompare(b[1]); });
+
+  var CSS = '.dp{position:relative;flex-shrink:0}.dp.dp-full{width:100%}' +
+    '.dp-btn{display:flex;align-items:center;gap:8px;width:100%;height:100%;min-height:46px;padding:0 10px 0 12px;border-radius:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;font-size:14px;cursor:pointer;white-space:nowrap;text-align:start}' +
     '.dp-btn:hover{background:rgba(255,255,255,.15)}.dp-btn:focus-visible,.dp-btn[aria-expanded=true]{outline:none;border-color:#E5C158}' +
+    '.dp-btn:disabled{opacity:.55;cursor:not-allowed}.dp-btn.dp-invalid{border-color:#f87171}' +
+    '.dp-val{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}.dp-val.dp-ph{color:rgba(167,243,208,.8)}' +
     '.dp-flag{width:22px;height:16px;border-radius:3px;object-fit:cover;box-shadow:0 0 0 1px rgba(255,255,255,.25);flex-shrink:0;background:#2a4a40}' +
-    '.dp-chev{width:14px;height:14px;opacity:.7;transition:transform .15s}.dp-btn[aria-expanded=true] .dp-chev{transform:rotate(180deg)}' +
+    '.dp-globe{width:20px;height:20px;flex-shrink:0;color:rgba(167,243,208,.7)}' +
+    '.dp-chev{width:14px;height:14px;opacity:.7;transition:transform .15s;flex-shrink:0}.dp-btn[aria-expanded=true] .dp-chev{transform:rotate(180deg)}' +
     '.dp-pop{position:absolute;z-index:60;top:calc(100% + 6px);left:0;width:min(20rem,calc(100vw - 32px));background:#0E2820;border:1px solid rgba(229,193,88,.35);border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,.45);overflow:hidden}' +
+    '.dp-full .dp-pop{width:100%;min-width:min(16rem,calc(100vw - 32px))}[dir=rtl] .dp-full .dp-pop{left:auto;right:0}' +
     '.dp-pop[hidden]{display:none}' +
     '.dp-search{display:block;width:100%;padding:12px 14px;background:rgba(255,255,255,.06);border:0;border-bottom:1px solid rgba(255,255,255,.12);color:#fff;font-size:14px;outline:none}' +
     '.dp-search::placeholder{color:rgba(167,243,208,.5)}' +
@@ -85,59 +129,69 @@
     '.dp-opt .dp-code{color:rgba(167,243,208,.75);font-variant-numeric:tabular-nums}' +
     '.dp-opt[aria-selected=true]{background:rgba(229,193,88,.16);color:#fff}.dp-opt[aria-selected=true] .dp-code{color:#E5C158}' +
     '.dp-opt.dp-active{background:rgba(255,255,255,.1)}' +
-    '.dp-empty{padding:14px 10px;color:rgba(226,232,240,.6);font-size:13px}';
+    '.dp-empty{padding:14px 10px;color:rgba(226,232,240,.6);font-size:13px}' +
+    '.dp-native{position:absolute!important;left:0;bottom:0;width:1px!important;height:1px!important;opacity:0;pointer-events:none}';
   var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
   var FLAG = function (iso) { return '/images/flags/' + iso.toLowerCase() + '.svg'; };
   var chev = '<svg class="dp-chev" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M5.3 7.3a1 1 0 0 1 1.4 0L10 10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4z"/></svg>';
+  var globe = '<svg class="dp-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9S14.5 18.3 12 21c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/></svg>';
   var uid = 0;
+  function icon(iso, lazy) {
+    return iso ? '<img class="dp-flag"' + (lazy ? ' loading="lazy"' : '') + ' alt="" width="22" height="16" src="' + FLAG(iso) + '">' : globe;
+  }
+  function attr(el, k, d) { return el.getAttribute(k) || d; }
 
-  document.querySelectorAll('select[data-dialcodes]').forEach(function (sel) {
-    var topLabel = sel.getAttribute('data-top-label') || 'Gulf & India';
-    var allLabel = sel.getAttribute('data-all-label') || 'All countries';
-    var searchPh = sel.getAttribute('data-search') || 'Search country or code';
-    var noneTxt = sel.getAttribute('data-none') || 'No match';
-    C.forEach(function (c) { var o = document.createElement('option'); o.value = c[0]; o.textContent = '+' + c[2] + ' ' + c[1]; sel.appendChild(o); });
-    sel.value = guess();
-
-    // Custom picker (the native select stays in the page, hidden, as the source of truth).
+  // Generic flag picker on top of a native <select>.
+  // cfg.items() -> [{ v, iso, label, right, group }]; cfg.btn(item) -> button text; cfg.full -> full width.
+  function makePicker(sel, cfg) {
     var id = 'dp' + (++uid);
-    var wrap = document.createElement('div'); wrap.className = 'dp';
-    wrap.innerHTML = '<button type="button" class="dp-btn" aria-haspopup="listbox" aria-expanded="false" aria-controls="' + id + '-list"><img class="dp-flag" alt="" width="22" height="16"><span class="dp-val"></span>' + chev + '</button>' +
-      '<div class="dp-pop" hidden><input type="search" class="dp-search" autocomplete="off" spellcheck="false" aria-controls="' + id + '-list" placeholder="' + searchPh.replace(/"/g, '&quot;') + '"><ul class="dp-list" role="listbox" id="' + id + '-list"></ul></div>';
+    var wrap = document.createElement('div'); wrap.className = 'dp' + (cfg.full ? ' dp-full' : '');
+    wrap.innerHTML = '<button type="button" class="dp-btn" aria-haspopup="listbox" aria-expanded="false" aria-controls="' + id + '-list"><span class="dp-ico"></span><span class="dp-val"></span>' + chev + '</button>' +
+      '<div class="dp-pop" hidden><input type="search" class="dp-search" autocomplete="off" spellcheck="false" aria-controls="' + id + '-list"><ul class="dp-list" role="listbox" id="' + id + '-list"></ul></div>';
     sel.parentNode.insertBefore(wrap, sel);
-    sel.style.display = 'none'; sel.tabIndex = -1; sel.setAttribute('aria-hidden', 'true');
+    if (cfg.full) { sel.parentNode.style.position = 'relative'; sel.classList.add('dp-native'); }
+    else { sel.style.display = 'none'; }
+    sel.tabIndex = -1; sel.setAttribute('aria-hidden', 'true');
     var btn = wrap.querySelector('.dp-btn'), pop = wrap.querySelector('.dp-pop'), q = wrap.querySelector('.dp-search'), list = wrap.querySelector('.dp-list');
-    btn.setAttribute('aria-label', (sel.getAttribute('aria-label') || 'Country calling code'));
+    q.placeholder = attr(sel, 'data-search', 'Search');
+    var lab = sel.id && document.querySelector('label[for="' + sel.id + '"]');
+    if (lab) { lab.htmlFor = id + '-btn'; btn.id = id + '-btn'; } else btn.setAttribute('aria-label', attr(sel, 'aria-label', ''));
     var active = -1, shown = [];
-
+    function current() { var v = sel.value; var it = cfg.items().filter(function (x) { return x.v === v; })[0]; return v ? it : null; }
     function paint() {
-      var c = byIso[sel.value]; if (!c) return;
-      btn.querySelector('.dp-flag').src = FLAG(c[0]);
-      btn.querySelector('.dp-val').textContent = '+' + c[2];
-      btn.title = c[1] + ' (+' + c[2] + ')';
+      var it = current(), val = wrap.querySelector('.dp-val');
+      wrap.querySelector('.dp-ico').innerHTML = it ? icon(it.iso) : (cfg.phIso && cfg.phIso() ? icon(cfg.phIso()) : (cfg.full ? globe : ''));
+      val.textContent = it ? cfg.btn(it) : (cfg.ph ? cfg.ph() : '');
+      val.classList.toggle('dp-ph', !it);
+      btn.title = it ? it.label + (it.right ? ' (' + it.right + ')' : '') : '';
+      btn.disabled = !!(cfg.disabled && cfg.disabled());
+      if (it) btn.classList.remove('dp-invalid');
     }
     function render(term) {
       term = String(term || '').trim().toLowerCase().replace(/^\+/, '');
       list.innerHTML = ''; shown = []; active = -1;
-      var groups = term ? [[null, C]] : [[topLabel, C.slice(0, 7)], [allLabel, C.slice(7)]];
+      var items = cfg.items(), groups = [], gi = {};
+      items.forEach(function (x) {
+        if (term && !(x.label.toLowerCase().indexOf(term) !== -1 || (x.right && x.right.replace('+', '').indexOf(term) === 0) || (x.iso && x.iso.toLowerCase() === term) || x.v === OTHER)) return;
+        var g = term ? '' : (x.group || '');
+        if (!(g in gi)) { gi[g] = groups.length; groups.push([g, []]); }
+        groups[gi[g]][1].push(x);
+      });
       groups.forEach(function (g) {
-        var items = g[1].filter(function (c) {
-          return !term || c[1].toLowerCase().indexOf(term) !== -1 || c[2].indexOf(term) === 0 || c[0].toLowerCase() === term;
-        });
-        if (!items.length) return;
         if (g[0]) { var h = document.createElement('li'); h.className = 'dp-head'; h.setAttribute('role', 'presentation'); h.textContent = g[0]; list.appendChild(h); }
-        items.forEach(function (c) {
+        g[1].forEach(function (x, n) {
           var li = document.createElement('li');
-          li.className = 'dp-opt'; li.setAttribute('role', 'option'); li.id = id + '-' + c[0];
-          li.setAttribute('aria-selected', c[0] === sel.value ? 'true' : 'false');
-          li.innerHTML = '<img class="dp-flag" loading="lazy" alt="" width="22" height="16" src="' + FLAG(c[0]) + '"><span class="dp-name"></span><span class="dp-code">+' + c[2] + '</span>';
-          li.querySelector('.dp-name').textContent = c[1];
+          li.className = 'dp-opt'; li.setAttribute('role', 'option'); li.id = id + '-o' + shown.length;
+          li.setAttribute('aria-selected', x.v === sel.value ? 'true' : 'false');
+          li.innerHTML = icon(x.iso, true) + '<span class="dp-name"></span>' + (x.right ? '<span class="dp-code"></span>' : '');
+          li.querySelector('.dp-name').textContent = x.label;
+          if (x.right) li.querySelector('.dp-code').textContent = x.right;
           li.addEventListener('mousedown', function (e) { e.preventDefault(); });
-          li.addEventListener('click', function () { choose(c[0], true); });
+          li.addEventListener('click', function () { choose(x.v); });
           list.appendChild(li); shown.push(li);
         });
       });
-      if (!shown.length) { var n = document.createElement('li'); n.className = 'dp-empty'; n.textContent = noneTxt; list.appendChild(n); }
+      if (!shown.length) { var n = document.createElement('li'); n.className = 'dp-empty'; n.textContent = attr(sel, 'data-none', 'No match'); list.appendChild(n); }
     }
     function setActive(i) {
       if (!shown.length) return;
@@ -148,7 +202,7 @@
       shown[active].scrollIntoView({ block: 'nearest' });
     }
     function open() {
-      if (!pop.hidden) return;
+      if (!pop.hidden || btn.disabled) return;
       render(''); pop.hidden = false; btn.setAttribute('aria-expanded', 'true');
       q.value = ''; q.focus({ preventScroll: true });
       var cur = list.querySelector('[aria-selected="true"]');
@@ -159,9 +213,9 @@
       pop.hidden = true; btn.setAttribute('aria-expanded', 'false');
       if (refocus) btn.focus();
     }
-    function choose(iso, byUser) {
-      sel.value = iso; paint();
-      if (byUser) { sel.dispatchEvent(new Event('change', { bubbles: true })); close(true); }
+    function choose(v) {
+      sel.value = v; paint();
+      sel.dispatchEvent(new Event('change', { bubbles: true })); close(true);
     }
     btn.addEventListener('click', function () { pop.hidden ? open() : close(true); });
     btn.addEventListener('keydown', function (e) { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); open(); } });
@@ -174,19 +228,95 @@
       else if (e.key === 'Tab') close(false);
     });
     document.addEventListener('click', function (e) { if (!wrap.contains(e.target)) close(false); });
-    sel.addEventListener('dialsync', paint);
+    sel.addEventListener('invalid', function () { btn.classList.add('dp-invalid'); setTimeout(function () { btn.focus(); }, 0); });
+    sel.addEventListener('focus', function () { btn.focus(); });
     paint();
+    return { paint: paint, close: close };
+  }
+  function opt(sel, v, text) { var o = document.createElement('option'); o.value = v; o.textContent = text; sel.appendChild(o); }
+  function toggleOther(input, on) {
+    if (!input) return;
+    input.hidden = !on; input.required = on;
+    if (!on) input.value = '';
+  }
+
+  // ---- Destination country ----
+  var countryPickers = [];
+  document.querySelectorAll('select[data-country-picker]').forEach(function (sel) {
+    var top = attr(sel, 'data-top-label', 'Gulf & India'), all = attr(sel, 'data-all-label', 'All countries');
+    var otherTxt = attr(sel, 'data-other', 'Other country');
+    sel.innerHTML = '';
+    opt(sel, '', attr(sel, 'data-ph', 'Select country…')); sel.options[0].disabled = true; sel.options[0].selected = true;
+    C.slice(0, 7).concat(SORTED).forEach(function (c) { opt(sel, c[1], c[1]); });
+    opt(sel, OTHER, otherTxt);
+    var items = C.slice(0, 7).map(function (c) { return { v: c[1], iso: c[0], label: c[1], group: top }; })
+      .concat(SORTED.map(function (c) { return { v: c[1], iso: c[0], label: c[1], group: all }; }))
+      .concat([{ v: OTHER, iso: '', label: otherTxt, group: all }]);
+    var other = sel.form && sel.form.querySelector('[name="country_other"]');
+    var pk = makePicker(sel, { full: true, items: function () { return items; }, btn: function (x) { return x.label; },
+      ph: function () { return attr(sel, 'data-ph', 'Select country…'); } });
+    sel.addEventListener('change', function () { toggleOther(other, sel.value === OTHER); if (sel.value === OTHER) other.focus(); });
+    countryPickers.push(pk);
+  });
+
+  // ---- Destination port (depends on country) ----
+  document.querySelectorAll('select[data-port-picker]').forEach(function (sel) {
+    var form = sel.form, country = form && form.querySelector('select[name="country"]');
+    var other = form && form.querySelector('[name="port_other"]');
+    var otherTxt = attr(sel, 'data-other', 'Other port');
+    function iso() { var c = country && byName[country.value]; return c ? c[0] : ''; }
+    function items() {
+      var i = iso(), list = (PORTS[i] || []).map(function (pName) { return { v: pName, iso: i, label: pName }; });
+      return list.concat([{ v: OTHER, iso: '', label: otherTxt }]);
+    }
+    function fill() {
+      sel.innerHTML = ''; opt(sel, '', ''); sel.options[0].disabled = true; sel.options[0].selected = true;
+      items().forEach(function (x) { opt(sel, x.v, x.label); });
+    }
+    fill();
+    var pk = makePicker(sel, { full: true, items: items, btn: function (x) { return x.label; },
+      disabled: function () { return !country || !country.value; }, phIso: iso,
+      ph: function () { return country && country.value ? attr(sel, 'data-ph', 'Select port…') : attr(sel, 'data-first', 'Choose the country first'); } });
+    if (country) country.addEventListener('change', function () {
+      fill();
+      var only = country.value === OTHER || !PORTS[iso()];
+      if (only) sel.value = OTHER;
+      toggleOther(other, sel.value === OTHER);
+      pk.paint();
+    });
+    sel.addEventListener('change', function () { toggleOther(other, sel.value === OTHER); if (sel.value === OTHER) other.focus(); });
+    if (form) form.addEventListener('reset', function () { setTimeout(function () { fill(); toggleOther(other, false); pk.paint(); }, 0); });
+  });
+  document.querySelectorAll('form').forEach(function (form) {
+    form.addEventListener('reset', function () {
+      setTimeout(function () { toggleOther(form.querySelector('[name="country_other"]'), false); countryPickers.forEach(function (p) { p.paint(); }); }, 0);
+    });
+    form.addEventListener('formdata', function (e) {
+      [['country', 'country_other'], ['port', 'port_other']].forEach(function (k) {
+        if (e.formData.get(k[0]) === OTHER) e.formData.set(k[0], String(e.formData.get(k[1]) || '').trim());
+        e.formData.delete(k[1]);
+      });
+    });
+  });
+
+  // ---- Phone country code ----
+  document.querySelectorAll('select[data-dialcodes]').forEach(function (sel) {
+    var top = attr(sel, 'data-top-label', 'Gulf & India'), all = attr(sel, 'data-all-label', 'All countries');
+    C.forEach(function (c) { opt(sel, c[0], '+' + c[2] + ' ' + c[1]); });
+    sel.value = guess();
+    var items = C.map(function (c, i) { return { v: c[0], iso: c[0], label: c[1], right: '+' + c[2], group: i < 7 ? top : all }; });
+    var pk = makePicker(sel, { items: function () { return items; }, btn: function (x) { return x.right; } });
 
     var form = sel.form;
     if (!form) return;
     var userPicked = false;
-    sel.addEventListener('change', function () { userPicked = true; });
+    sel.addEventListener('change', function (e) { if (e.isTrusted !== false) userPicked = true; });
     var country = form.querySelector('[name="country"]');
     if (country) country.addEventListener('change', function () {
-      var iso = findIso(country.value);
-      if (iso && !userPicked) { sel.value = iso; paint(); }
+      var i = byName[country.value] ? byName[country.value][0] : findIso(country.value);
+      if (i && !userPicked) { sel.value = i; pk.paint(); }
     });
-    form.addEventListener('reset', function () { setTimeout(function () { userPicked = false; sel.value = guess(); paint(); }, 0); });
+    form.addEventListener('reset', function () { setTimeout(function () { userPicked = false; sel.value = guess(); pk.paint(); }, 0); });
     // Runs whenever the submit code calls new FormData(form).
     form.addEventListener('formdata', function (e) {
       var raw = String(e.formData.get('phone') || '').trim();

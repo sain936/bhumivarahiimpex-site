@@ -190,7 +190,7 @@ def page(code,t,L,groups,SHEETS_URL,CAT):
       }}
     }});
   </script>
-  <script src="/js/dialcodes.js?v=3" defer></script>
+  <script src="/js/dialcodes.js?v=5" defer></script>
 </body>
 </html>
 '''

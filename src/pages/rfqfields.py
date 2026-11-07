@@ -7,6 +7,9 @@ e = html.escape
 
 T = {
  'en': dict(
+   optional='(optional)', sel_country='Select country…', sel_port='Select port…', port_first='Choose the country first',
+   other_country='Other country', other_port='Other port', ph_country_other='Type the country name', ph_port_other='Type the port name',
+   search_country='Search country', search_port='Search port',
    name='Company name', contact='Contact person', email='Work email', phone='Phone / WhatsApp',
    comm='Product', grade='Grade / type', qty='Quantity (metric tons)', country='Destination country',
    port='Destination port', incoterm='Delivery terms (Incoterm)', packing='Packing', label='Bag branding',
@@ -23,6 +26,9 @@ T = {
    payment_o=['LC at sight', 'TT advance + balance against documents', 'CAD (cash against documents)', 'To be discussed'],
  ),
  'ar': dict(
+   optional='(اختياري)', sel_country='اختر الدولة…', sel_port='اختر الميناء…', port_first='اختر الدولة أولاً',
+   other_country='دولة أخرى', other_port='ميناء آخر', ph_country_other='اكتب اسم الدولة', ph_port_other='اكتب اسم الميناء',
+   search_country='ابحث عن دولة', search_port='ابحث عن ميناء',
    name='اسم الشركة', contact='الشخص المسؤول', email='البريد الإلكتروني', phone='الهاتف / واتساب',
    comm='المنتج', grade='الصنف / النوع', qty='الكمية (طن متري)', country='بلد الوصول',
    port='ميناء الوصول', incoterm='شروط التسليم', packing='التعبئة', label='العلامة على الأكياس',
@@ -39,6 +45,9 @@ T = {
    payment_o=['اعتماد مستندي بالاطلاع', 'دفعة مقدمة بالتحويل والباقي مقابل المستندات', 'الدفع مقابل المستندات (CAD)', 'للنقاش'],
  ),
  'fr': dict(
+   optional='(facultatif)', sel_country='Choisir un pays…', sel_port='Choisir un port…', port_first='Choisissez d’abord le pays',
+   other_country='Autre pays', other_port='Autre port', ph_country_other='Saisissez le nom du pays', ph_port_other='Saisissez le nom du port',
+   search_country='Rechercher un pays', search_port='Rechercher un port',
    name='Société', contact='Personne à contacter', email='E-mail professionnel', phone='Téléphone / WhatsApp',
    comm='Produit', grade='Qualité / type', qty='Quantité (tonnes)', country='Pays de destination',
    port='Port de destination', incoterm='Conditions de livraison (Incoterm)', packing='Conditionnement', label='Marquage des sacs',
@@ -72,13 +81,15 @@ def render(lang, product_groups, group_names, lab):
     ltr = ' dir="ltr"' if lang == 'ar' else ''
     star = ' <span class="text-brand-goldLight" aria-hidden="true">*</span>'
 
-    def L(id_, key):
-        return f'<label for="{id_}" class="{lab}">{e(t[key])}{star}</label>'
+    def L(id_, key, opt=False):
+        mark = f' <span class="normal-case font-normal text-emerald-200/70">{e(t["optional"])}</span>' if opt else star
+        return f'<label for="{id_}" class="{lab}">{e(t[key])}{mark}</label>'
 
-    def text(id_, name, key, ph, typ='text', ac='', extra=''):
+    def text(id_, name, key, ph, typ='text', ac='', extra='', opt=False):
         a = f' autocomplete="{ac}"' if ac else ''
         d = ' dir="ltr"' if typ in ('email', 'tel') else ''
-        return f'<div>{L(id_, key)}<input type="{typ}" id="{id_}" name="{name}" required{a}{d}{extra} placeholder="{e(ph)}" class="{INP}" /></div>'
+        r = '' if opt else ' required'
+        return f'<div>{L(id_, key, opt)}<input type="{typ}" id="{id_}" name="{name}"{r}{a}{d}{extra} placeholder="{e(ph)}" class="{INP}" /></div>'
 
     def select(id_, name, key, opts_key):
         o = f'<option value="" disabled selected>{e(t["choose"])}</option>' + ''.join(
@@ -93,16 +104,23 @@ def render(lang, product_groups, group_names, lab):
     phone = (f'<div>{L("phone", "phone")}<div class="flex gap-2" dir="ltr">'
              f'<select id="dialcode" data-dialcodes data-top-label="{e(dz["top"])}" data-all-label="{e(dz["all"])}" data-search="{e(dz["search"])}" data-none="{e(dz["none"])}" aria-label="{e(dz["aria"])}" class="w-[7.5rem] shrink-0 px-2 py-3 rounded-lg bg-white/10 border border-white/20 text-white text-sm [&>optgroup]:text-slate-900 [&_option]:text-slate-900"></select>'
              f'<input type="tel" id="phone" name="phone" required autocomplete="tel-national" inputmode="tel" minlength="6" placeholder="50 123 4567" class="min-w-0 flex-1 {INP}" dir="ltr" /></div></div>')
+    country = (f'<div>{L("country", "country")}<div class="relative">'
+               f'<select id="country" name="country" required data-country-picker data-ph="{e(t["sel_country"])}" data-other="{e(t["other_country"])}" data-search="{e(t["search_country"])}" data-none="{e(dz["none"])}" data-top-label="{e(dz["top"])}" data-all-label="{e(dz["all"])}" class="{SEL}">'
+               f'<option value="" disabled selected>{e(t["sel_country"])}</option></select></div>'
+               f'<input type="text" name="country_other" hidden maxlength="80" placeholder="{e(t["ph_country_other"])}" aria-label="{e(t["ph_country_other"])}" class="mt-2 {INP}" /></div>')
+    port = (f'<div>{L("port", "port")}<div class="relative">'
+            f'<select id="port" name="port" required data-port-picker data-ph="{e(t["sel_port"])}" data-first="{e(t["port_first"])}" data-other="{e(t["other_port"])}" data-search="{e(t["search_port"])}" data-none="{e(dz["none"])}" class="{SEL}">'
+            f'<option value="" disabled selected>{e(t["port_first"])}</option></select></div>'
+            f'<input type="text" name="port_other" hidden maxlength="80" placeholder="{e(t["ph_port_other"])}" aria-label="{e(t["ph_port_other"])}" class="mt-2 {INP}" /></div>')
     fields = [
         text('buyerName', 'name', 'name', t['ph_name'], ac='organization'),
         text('contactPerson', 'contact', 'contact', t['ph_contact'], ac='name'),
         text('buyerEmail', 'email', 'email', 'procurement@buyer.com', typ='email', ac='email'),
         phone,
         f'<div>{L("commoditySelect", "comm")}<select id="commoditySelect" name="commodity" required class="{SEL}"{ltr}>{prod}</select></div>',
-        text('grade', 'grade', 'grade', t['ph_grade']),
+        text('grade', 'grade', 'grade', t['ph_grade'], opt=True),
         text('quantity', 'quantity', 'qty', t['ph_qty']),
-        text('country', 'country', 'country', t['ph_country'], ac='country-name'),
-        text('port', 'port', 'port', t['ph_port']),
+        country, port,
         select('incoterm', 'incoterm', 'incoterm', 'incoterm_o'),
         select('packing', 'packing', 'packing', 'packing_o'),
         select('bagLabel', 'label', 'label', 'label_o'),
