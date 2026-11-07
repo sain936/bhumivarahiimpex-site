@@ -531,8 +531,9 @@
           </div>
           <div class="p-6 pt-0">
             <button onclick="preselectCommodity('1010 Non-Basmati Rice')" class="w-full py-2.5 rounded-lg border border-brand-agriGreen text-brand-agriGreen font-bold text-xs hover:bg-brand-agriGreen hover:text-white transition">
-              Request Rice Specs
+              Request Rice Quote
             </button>
+            <a href="/rice/" class="block mt-3 text-center text-sm font-semibold text-brand-agriGreen underline underline-offset-4 hover:text-brand-darkGreen">View rice specifications &rarr;</a>
           </div>
         </div>
 
@@ -958,6 +959,13 @@
       }
       document.getElementById('rfq').scrollIntoView({ behavior: 'smooth' });
     }
+
+    // Preselect commodity from product pages (/?commodity=...#rfq)
+    (() => {
+      const c = new URLSearchParams(location.search).get('commodity');
+      const sel = document.getElementById('commoditySelect');
+      if (c && [...sel.options].some(o => o.value === c)) sel.value = c;
+    })();
 
     // RFQ Form Submission Handler (no native alert)
     const rfqForm = document.getElementById('rfqForm');
