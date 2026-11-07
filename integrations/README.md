@@ -39,3 +39,24 @@ counts by status, and a list of open requests (old "New" ones flagged in red).
 One-time setup: in Apps Script, choose **setupWeeklySummary** in the function
 dropdown and click **Run**, then allow the permission. To see it straight away,
 run **sendWeeklySummary**.
+
+## Automations
+
+The script also runs these by itself once they are switched on:
+
+| What | When | What it does |
+| --- | --- | --- |
+| Daily follow-ups email | Every day, about 9 AM IST | Lists RFQs still marked **New** after 24 hours, RFQs marked **Contacted** with no quote after 3 days, and Outreach contacts whose **Next follow-up** date has arrived. If nothing is due, no email is sent. |
+| Spam filter | On every form submission | Submissions with no email and no phone, links in the name, 3+ links, or spam words (SEO, crypto, backlinks…) go to a **Spam** tab. No emails are sent for them. |
+| Duplicate filter | On every form submission | If the same email or phone sends the same product again within an hour, no new row is added. A "Resubmitted" note (and any new details) is added to the first row, and the buyer doesn't get a second acknowledgement. |
+| Outreach dates | When you change **Stage** in the Outreach tab | Fills in the Date and sets **Next follow-up**: Sent +4 days, Follow-up 1 +6, Replied +1, Quoted +3, Sample +7. Follow-up 2 clears it. |
+| Health check | Every 6 hours | Opens the website and this RFQ endpoint. If either is down, info@ gets one alert, then one "resolved" email when it is back. |
+| Monthly report | 1st of each month, about 9 AM IST | Last month's RFQs, quote rate, win rate, spam blocked, and counts by product and country. |
+
+**One-time setup:**
+
+1. Paste the new script and deploy it as a new version (**Deploy → Manage deployments → Edit → New version**). The web app URL stays the same.
+2. Choose **setupAutomations** in the function menu and click **Run**. Google will ask for permission again, because the health check needs to fetch web pages. Approve it.
+3. This creates the **Outreach** and **Spam** tabs and schedules everything above, including the weekly summary.
+
+To test without waiting, run **dailyDigest**, **healthCheck** or **sendMonthlyReport** from the menu. You can change the 24-hour and 3-day limits at the top of the Automations section (`REPLY_AFTER_HOURS`, `QUOTE_AFTER_DAYS`).
