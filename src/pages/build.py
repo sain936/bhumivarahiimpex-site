@@ -16,7 +16,8 @@ hub('spices',[('Indian spices',SPICES)],'Indian Spices for Export','Turmeric, ch
 # commodity list for the form
 json.dump({'Basmati rice':[p['name'] for p in BASMATI],'Aromatic rice':[p['name'] for p in AROMATIC],'Non-basmati rice':[p['name'] for p in NONBAS],'Spices':[p['name'] for p in SPICES]},
           open(os.path.join(os.path.dirname(os.path.abspath(__file__)),'commodities.json'),'w'))
-urls=['/rice/','/spices/']+[f"/rice/{p['slug']}/" for p in BASMATI+AROMATIC+NONBAS]+[f"/spices/{p['slug']}/" for p in SPICES]
+urls=['/ar/','/fr/','/rice/','/spices/']+[f"/rice/{p['slug']}/" for p in BASMATI+AROMATIC+NONBAS]+[f"/spices/{p['slug']}/" for p in SPICES]
 sm='<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'+''.join(f'  <url>\n    <loc>{SITE}{u}</loc>\n    <lastmod>2026-11-08</lastmod>\n  </url>\n' for u in ['/']+urls)+'</urlset>\n'
 open(ROOT+'/sitemap.xml','w').write(sm)
+import lang
 print(len(urls),'pages')
