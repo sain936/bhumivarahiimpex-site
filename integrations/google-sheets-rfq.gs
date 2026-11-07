@@ -20,12 +20,13 @@ function doPost(e) {
     if (p.botcheck) return json_({ success: true }); // spam trap filled in
 
     const sheet = getSheet_();
+    p.ref = 'BV-' + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyMMdd-HHmmss');
     const clean = v => {
       v = String(v || '').trim().slice(0, 2000);
       return /^[=+\-@]/.test(v) ? "'" + v : v; // stop formula injection
     };
     sheet.appendRow([new Date(), clean(p.name), clean(p.email), clean(p.phone), clean(p.country),
-                     clean(p.commodity), clean(p.quantity), clean(p.notes), 'New', '']);
+                     clean(p.commodity), clean(p.quantity), clean(p.notes), 'New', 'Ref: ' + p.ref]);
 
     notify_(p);
     try { acknowledge_(p); } catch (ackErr) { console.warn('Buyer acknowledgement failed: ' + ackErr); }
@@ -66,7 +67,7 @@ function notify_(p) {
   const html = `<div style="font-family:Arial,sans-serif;max-width:560px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
     <div style="background:#1B4D3E;color:#E5C158;padding:14px 18px;font-weight:bold;letter-spacing:1px;">NEW REQUEST FOR QUOTATION</div>
     <table style="border-collapse:collapse;font-size:14px;margin:10px 6px;">
-      ${row('Company / Buyer', p.name)}${row('Email', p.email)}${row('Phone / WhatsApp', p.phone)}
+      ${row('Reference', p.ref)}${row('Company / Buyer', p.name)}${row('Email', p.email)}${row('Phone / WhatsApp', p.phone)}
       ${row('Country', p.country)}${row('Commodity', p.commodity)}${row('Quantity', p.quantity)}${row('Port & packaging', p.notes)}
     </table>
     <div style="background:#0E2820;color:#cbd5e1;padding:10px 18px;font-size:12px;">Reply to this email to answer the buyer directly. Saved in the RFQs sheet.</div>
@@ -74,7 +75,7 @@ function notify_(p) {
   MailApp.sendEmail({
     to: NOTIFY_EMAIL,
     replyTo: p.email || NOTIFY_EMAIL,
-    subject: `New RFQ: ${p.commodity || 'Inquiry'} from ${p.name || 'website visitor'}`,
+    subject: `New RFQ ${p.ref}: ${p.commodity || 'Inquiry'} from ${p.name || 'website visitor'}`,
     htmlBody: html,
     name: 'Bhumi Varahi Website'
   });
@@ -98,7 +99,7 @@ function acknowledge_(p) {
       <div style="background:#F8F5EC;border-left:3px solid #C9A227;border-radius:4px;padding:8px 4px;margin:0 0 18px;">
         <div style="padding:4px 12px;font-size:12px;letter-spacing:1px;color:#8A6508;font-weight:bold;">YOUR REQUEST</div>
         <table style="border-collapse:collapse;font-size:14px;">
-          ${row('Commodity', p.commodity)}${row('Quantity', p.quantity)}${row('Destination', p.country)}${row('Port & packaging', p.notes)}
+          ${row('Reference', p.ref)}${row('Commodity', p.commodity)}${row('Quantity', p.quantity)}${row('Destination', p.country)}${row('Port & packaging', p.notes)}
         </table>
       </div>
       <p style="margin:0;">Warm regards,<br><strong style="color:#1B4D3E;">Export Desk</strong><br>Bhumi Varahi Impex Pvt Ltd</p>
@@ -109,11 +110,11 @@ function acknowledge_(p) {
       <a href="https://www.bhumivarahiimpex.com" style="color:#E5C158;text-decoration:none;">www.bhumivarahiimpex.com</a>
     </div>
   </div>`;
-  const text = `Dear ${p.name || 'Sir / Madam'},\n\nThank you for your request for quotation. We have received it, and our export desk is now working on your quotation. We will be in touch as soon as the quotation is ready.\n\nCommodity: ${p.commodity || '-'}\nQuantity: ${p.quantity || '-'}\n\nWarm regards,\nExport Desk, Bhumi Varahi Impex Pvt Ltd\n${NOTIFY_EMAIL} | WhatsApp +91 94929 92666 | www.bhumivarahiimpex.com`;
+  const text = `Dear ${p.name || 'Sir / Madam'},\n\nThank you for your request for quotation. We have received it, and our export desk is now working on your quotation. We will be in touch as soon as the quotation is ready.\n\nReference: ${p.ref}\nCommodity: ${p.commodity || '-'}\nQuantity: ${p.quantity || '-'}\n\nWarm regards,\nExport Desk, Bhumi Varahi Impex Pvt Ltd\n${NOTIFY_EMAIL} | WhatsApp +91 94929 92666 | www.bhumivarahiimpex.com`;
   MailApp.sendEmail({
     to: email,
     replyTo: NOTIFY_EMAIL,
-    subject: `We received your RFQ: ${p.commodity || 'Quotation request'} | Bhumi Varahi Impex`,
+    subject: `We received your RFQ ${p.ref}: ${p.commodity || 'Quotation request'} | Bhumi Varahi Impex`,
     body: text,
     htmlBody: html,
     name: 'Bhumi Varahi Impex'
