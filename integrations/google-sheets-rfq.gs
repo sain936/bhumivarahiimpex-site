@@ -1026,8 +1026,9 @@ function sensitivity_(ccIn, V, minMargin, minBuyer) {
   const mt = Number(ccIn.mt), cargo = base.lines[0].inr;
   const run = (name, cc, b) => {
     const c = computeCosting_(Object.assign({}, ccIn, cc || {}));
-    const B = computeBuyer_(c.fobUsd, mt, c.containers, Object.assign({}, V, b || {}));
-    const held = base.fobUsd * Number((cc && cc.fx) || ccIn.fx) - c.cost;
+    const mS = Number((cc && cc.mt) || mt);
+    const B = computeBuyer_(c.fobUsd, mS, c.containers, Object.assign({}, V, b || {}));
+    const held = base.fobUsdPerMt * mS * Number((cc && cc.fx) || ccIn.fx) - c.cost;
     return { name: name, fobPerMt: c.fobUsdPerMt, heldMarginPct: r2(held / c.lines[0].inr * 100),
              buyerLandedPerMt: B ? B.landedPerMt : null, buyerRoi: B && B.sell ? B.roi : null };
   };
@@ -1038,6 +1039,8 @@ function sensitivity_(ccIn, V, minMargin, minBuyer) {
     run('Rupee 2% stronger (INR ' + r2(fx * 0.98) + ' / USD)', { fx: fx * 0.98 }), run('Rupee 2% weaker (INR ' + r2(fx * 1.02) + ' / USD)', { fx: fx * 1.02 }),
     run('Origin logistics +10%', { rates: scale(1.1) })]
     .concat(fr ? [run('Ocean freight +20%', null, { b_freight: fr * 1.2 }), run('Ocean freight -20%', null, { b_freight: fr * 0.8 })] : []);
+  const full = base.containers * (Number(ccIn.containerMt) || 25);
+  if (mt < full * 0.9) rows.push(run('Full container load (' + full + ' MT)', { mt: full }));
   const breakEven = r2(base.cost / fx / mt);
   const minFob = r2((base.cost + cargo * (Number(minMargin) || 0) / 100) / fx / mt);
   let buyerMax = null;
@@ -1283,6 +1286,25 @@ function writeWebEstimates_(sh, web) {
   });
 }
 
+// Gemini's origin rates matched to our cost lines: from the JSON (array or object), else from the
+// "India origin logistics" bullets in the text. Names are matched loosely. Pure.
+function originEstimates_(raw, text, lines) {
+  const norm = x => String(x || '').toLowerCase().replace(/\(per [^)]*\)\s*$/, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  const find = name => { const n = norm(name); return n && lines.find(l => { const m = norm(l.item); return m === n || m.indexOf(n) === 0 || n.indexOf(m) === 0; }); };
+  let list = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? Object.keys(raw).map(k => ({ item: k, rate: raw[k] })) : [];
+  const out = [], seen = {};
+  const push = (name, rate) => { const l = find(name), r = num_(rate); if (l && r != null && !seen[l.item]) { seen[l.item] = 1; out.push({ item: l.item, rate: r }); } };
+  list.forEach(e => e && push(e.item, e.rate));
+  if (!out.length && text) {
+    const sec = String(text).split(/\n(?=#{1,4}\s)/).find(x => /^#{1,4}\s*India origin logistics/i.test(x)) || '';
+    sec.split(/\n/).forEach(line => {
+      const m = line.match(/^\s*[-*•]\s*\**(.+?)\**\s*:\s*(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)/i);
+      if (m) push(m[1], m[2]);
+    });
+  }
+  return out;
+}
+
 // Compares each cost line with its written quotes and the web estimate. Pure.
 // items: [{ label, unit, used, src ('entered' | 'quote' | 'AI'), quotes: [{vendor, amt}], web }]
 function compareQuotes_(items, opts) {
@@ -1345,11 +1367,28 @@ function decide_(o) {
   add('Our margin', o.marginPct >= o.minMargin ? 'GO' : o.marginPct > 0 ? 'WATCH' : 'STOP',
       pct(o.marginPct) + ' of cargo cost (minimum for GO: ' + o.minMargin + '%), ' + o.marginUsd + ' net');
   // 2. Buyer's target price
-  if (o.target) {
+  const qBasis = o.quoteBasis || 'FOB', qPerMt = o.quotePerMt || o.fobPerMt;
+  if (o.target && o.target < qPerMt * 0.15) {
+    add('Buyer target price', 'WATCH', 'USD ' + o.target + '/MT is far below any real price for this product (our ' + qBasis + ' is USD ' + qPerMt.toFixed(2) +
+        '/MT). It is probably a different unit (per kg or per bag) or a typo. Confirm with the buyer before replying.');
+  } else if (o.target) {
     const m = o.marginAtTarget;
-    add('Buyer target price', o.target >= o.fobPerMt ? 'GO' : m >= o.minMargin ? 'GO' : m > 0 ? 'WATCH' : 'STOP',
-        'USD ' + o.target + '/MT vs our FOB USD ' + o.fobPerMt.toFixed(2) + '/MT' + (o.target < o.fobPerMt ? '; at their price our margin would be ' + pct(m) : ''));
-  } else add('Buyer target price', 'WATCH', 'Not given; confirm the buyer accepts USD ' + o.fobPerMt.toFixed(2) + '/MT');
+    add('Buyer target price', o.target >= qPerMt ? 'GO' : m >= o.minMargin ? 'GO' : m > 0 ? 'WATCH' : 'STOP',
+        'USD ' + o.target + '/MT vs our ' + qBasis + ' USD ' + qPerMt.toFixed(2) + '/MT' + (o.target < qPerMt ? '; at their price our margin would be ' + pct(m) : ''));
+  } else add('Buyer target price', 'WATCH', 'Not given; confirm the buyer accepts USD ' + qPerMt.toFixed(2) + '/MT ' + qBasis);
+  // 2b. Container fill
+  if (o.fill && o.fill.pct < 0.9) {
+    const F = o.fill;
+    add('Container load', F.pct < 0.5 ? 'STOP' : 'WATCH', F.mt + ' MT fills ' + Math.round(F.pct * 100) + '% of ' + F.containers + ' x 20 ft (' + F.capacity + ' MT each). ' +
+        'Freight, THC, haulage and stuffing are paid per container, so our price is USD ' + o.fobPerMt.toFixed(2) + '/MT against USD ' + F.fullFobPerMt.toFixed(2) +
+        '/MT for a full load. ' + (F.pct < 0.5 ? 'Ask the buyer for a full container, or quote LCL / courier for a sample.' : 'Suggest filling the container to ' + (F.containers * F.capacity) + ' MT.'));
+  }
+  // 2c. Buyer's Incoterm
+  if (qBasis !== 'FOB') {
+    if (!o.quotePerMt) add('Buyer\'s Incoterm', 'WATCH', 'Buyer asked for ' + qBasis + ' but there is no freight figure, so only FOB can be quoted. Get a freight quote.');
+    else add('Buyer\'s Incoterm', o.freightAi ? 'WATCH' : 'GO', qBasis + ' price USD ' + qPerMt.toFixed(2) + '/MT' +
+        (o.freightAi ? ' uses a web freight estimate. Get a written freight quote before quoting ' + qBasis + '.' : ' (freight from ' + (o.freightQuote ? 'the lowest written quote' : 'the input tab') + ').'));
+  }
   // 3. Payment security
   add('Payment security', /^[AB]\b/i.test(o.payment) ? 'GO' : 'STOP', o.payment || 'Not set');
   // 4. Registrations
@@ -1361,9 +1400,10 @@ function decide_(o) {
            pct(o.buyerRoi) + ' return on landed cost (minimum for GO: ' + o.minBuyer + '%)' + (o.aiBuyer ? '; uses AI estimates' : ''));
   // 6a. Our price against the typical India FOB for this product
   if (o.fobBenchmark) {
-    const r = o.fobPerMt / o.fobBenchmark;
+    const part = o.fill && o.fill.pct < 0.9, bf = part ? o.fill.fullFobPerMt : o.fobPerMt;
+    const r = bf / o.fobBenchmark;
     add('Price vs typical India FOB', r < 0.75 ? 'STOP' : r < 0.9 || r > 1.25 ? 'WATCH' : 'GO',
-        'Our FOB USD ' + o.fobPerMt.toFixed(2) + '/MT is ' + Math.round(r * 100) + '% of the typical USD ' + Math.round(o.fobBenchmark) + '/MT' + (o.benchAi ? ' (AI est.)' : '') +
+        'Our FOB USD ' + bf.toFixed(2) + '/MT' + (part ? ' (at a full container)' : '') + ' is ' + Math.round(r * 100) + '% of the typical USD ' + Math.round(o.fobBenchmark) + '/MT' + (o.benchAi ? ' (AI est.)' : '') +
         (r < 0.75 ? '. Far too low: the mill price or grade is probably wrong, and customs may query under-invoicing. Do not quote this price.' : r < 0.9 ? '. Below market: re-check the mill price.' : r > 1.25 ? '. Above market: the buyer may not accept it.' : ''));
   }
   // 6b. Price sanity against the destination market
@@ -1373,6 +1413,9 @@ function decide_(o) {
         'Our FOB is ' + Math.round(ratio * 100) + '% of the lowest wholesale price (USD ' + o.wholesaleUsdLow.toFixed(0) + '/MT)' + (ratio < 0.35 ? '. Unusually low: check the mill price and grade, and under-invoicing risk' : ''));
   }
   // 7. Inputs left at defaults
+  if (!o.millDefault && o.fobBenchmark && o.millUsdPerMt && o.millUsdPerMt < o.fobBenchmark * 0.6)
+    add('Mill price', 'WATCH', 'INR ' + o.millPrice + '/100 kg is USD ' + o.millUsdPerMt.toFixed(0) + '/MT, only ' + Math.round(o.millUsdPerMt / o.fobBenchmark * 100) +
+        '% of the typical FOB of USD ' + Math.round(o.fobBenchmark) + '/MT. The cargo is usually 80-90% of FOB, so check the mill quote is for this grade.');
   if (o.millDefault) add('Mill price', 'WATCH', 'Still the default from Cost Settings (INR ' + o.millPrice + '/100 kg). Get a quote for this grade.');
   // 8. Destination inspection
   if (o.inspectionNeeded && !o.inspectionCosted) add('Destination inspection', 'STOP', o.inspection + (o.inspectionAi ? ' (AI est.)' : '') + ' is required but its cost is not in the costing. Set the PVoC / CoC cost line to Include = Y (or enter the agency quote).');
@@ -1382,6 +1425,7 @@ function decide_(o) {
     const R = o.priceRoom, f = n => 'USD ' + n.toFixed(2);
     add('Negotiation room', R.buyerMax >= R.minFob ? 'GO' : 'WATCH', R.buyerMax >= R.minFob
       ? 'Any FOB from ' + f(R.minFob) + ' (our ' + R.minMargin + '% margin) to ' + f(R.buyerMax) + ' / MT (buyer keeps ' + R.minBuyer + '%) works for both sides'
+      : R.buyerMax <= 0 ? 'No price works: even at FOB USD 0 the buyer\'s freight and local costs leave less than ' + R.minBuyer + '% at these market prices'
       : 'No price works for both sides: we need at least ' + f(R.minFob) + ' / MT, the buyer can pay at most ' + f(R.buyerMax) + ' / MT to keep ' + R.minBuyer + '%');
   }
   // 8b. Logistics rates against quotes and web estimates
@@ -1428,17 +1472,14 @@ function costingRow_(sheet, row, cfg, inp) {
   const fig = (research && !research.error && research.figures) || {};
   const webField = {}, webLine = {};
   Object.keys(QUOTE_FIELDS).forEach(k => { const x = num_(fig[QUOTE_FIELDS[k]]); if (x != null && fig[QUOTE_FIELDS[k]] !== '') webField[k] = x; });
-  (Array.isArray(fig.origin_costs_inr) ? fig.origin_costs_inr : []).forEach(e => {
-    const m = e && num_(e.rate) != null && inp.lines.find(l => l.item.toLowerCase() === String(e.item || '').toLowerCase().trim());
-    if (m) webLine[m.item] = num_(e.rate);
-  });
+  originEstimates_(fig.origin_costs_inr, research && research.text, inp.lines).forEach(e => { webLine[e.item] = e.rate; });
   const fieldLabel = quoteLabel_;
   const qOpts = { now: Date.now(), validDays: num_(setting_(S, 'Logistics quotes valid for (days)', 30)) || 30 };
   const originQ = compareQuotes_(inp.lines.filter(l => l.include).map(l => ({ label: l.item, unit: 'INR / ' + l.per, used: l.rate,
     src: l.fromQuote ? 'quote' : 'entered', quotes: l.quotes || [], web: webLine[l.item] })), qOpts);
   const destQ = compareQuotes_(Object.keys(QUOTE_FIELDS).map(k => ({ key: k, label: fieldLabel(k), unit: 'USD / container', used: num_(V[k]),
     src: (inp.src || {})[k] === 'quote' ? 'quote' : isAi(k) ? 'AI' : 'entered', quotes: (inp.quotes || {})[k] || [], web: webField[k] }))
-    .filter(x => x.used || x.quotes.length || x.web != null), qOpts);
+    .filter(x => x.used || x.quotes.length || (x.web != null && (finalDest || !/^b_(inland|bond)$/.test(x.key)))), qOpts);
   const allQ = originQ.concat(destQ);
   const logistics = allQ.some(x => x.quotes.length || x.web != null) ? {
     high: allQ.filter(x => x.flag === 'high').map(x => x.label), web: allQ.filter(x => x.flag === 'web').map(x => x.label),
@@ -1474,7 +1515,16 @@ function costingRow_(sheet, row, cfg, inp) {
     ['Clearing agent at destination', val('clearing_agent')]].concat(finalDest ? [['Final dry port / inland destination', finalDest]] : []);
   const cargoInr = c.lines[0].inr;
   const target = num_(p.price);
-  const marginAtTarget = target ? (target * mt * fx - c.cost) / cargoInr * 100 : null;
+  // Price on the buyer's Incoterm (CFR / CIF) from our FOB plus freight and insurance
+  const buyerTerm = (String(val('incoterm')).match(/^(FOB|CFR|C&F|CIF)/i) || ['FOB'])[0].toUpperCase().replace('C&F', 'CFR');
+  const frUsd = (num_(V.b_freight) || 0) * c.containers, frLocal = (num_(V.b_local) || 0) * c.containers;
+  const insUsd = buyerTerm === 'CIF' ? Math.round((c.fobUsd + frUsd) * (num_(V.b_ins_pct) || 0)) / 100 : 0;
+  const termUsd = buyerTerm !== 'FOB' && frUsd ? Math.round((c.fobUsd + frUsd + frLocal + insUsd) * 100) / 100 : null;
+  const termPerMt = termUsd ? Math.round(termUsd / mt * 100) / 100 : null;
+  const marginAtTarget = target ? ((target * mt - (termUsd ? termUsd - c.fobUsd : 0)) * fx - c.cost) / cargoInr * 100 : null;
+  const capacity = num_(V.mt_per_ctr) || 25;
+  const fill = { pct: mt / (c.containers * capacity), mt: mt, containers: c.containers, capacity: capacity,
+                 fullFobPerMt: computeCosting_(Object.assign({}, ccIn, { mt: c.containers * capacity })).fobUsdPerMt };
   const inspectionCosted = c.lines.some(l => /PVoC|CoC|inspection/i.test(l.item));
   const minMarginS = num_(setting_(S, 'Minimum margin for GO (%)', 8)), minBuyerS = num_(setting_(S, 'Minimum buyer return for GO (%)', 8));
   const sens = sensitivity_(ccIn, V, minMarginS, minBuyerS);
@@ -1486,6 +1536,8 @@ function costingRow_(sheet, row, cfg, inp) {
     millDefault: num_(V.mill_price) === num_(setting_(S, 'Default mill price (INR per 100 kg)', '')), millPrice: num_(V.mill_price),
     inspectionNeeded: !!val('dest_inspection'), inspectionCosted: inspectionCosted, inspection: val('dest_inspection'), inspectionAi: isAi('dest_inspection'),
     fobBenchmark: num_(V.fob_benchmark), benchAi: isAi('fob_benchmark'), logistics: logistics,
+    quoteBasis: termPerMt ? buyerTerm + ' ' + (pod || 'destination') : buyerTerm === 'FOB' ? 'FOB' : buyerTerm, quotePerMt: termPerMt,
+    freightAi: isAi('b_freight'), freightQuote: (inp.src || {}).b_freight === 'quote', fill: fill, millUsdPerMt: num_(V.mill_price) * 10 / fx,
     priceRoom: sens.buyerMax != null ? { minFob: sens.minFob, buyerMax: sens.buyerMax, minMargin: minMarginS, minBuyer: minBuyerS } : null,
     buyerPending: buyerNeeds.filter(b => !b[1]).length });
 
@@ -1551,9 +1603,10 @@ function costingRow_(sheet, row, cfg, inp) {
   table([['DECISION: ' + decision.verdict]], { head: false, colour: [[0, 0, vColour]] }).getCell(0, 0).editAsText().setFontSize(14);
   table([
     ['FOB price to quote', usd(c.fobUsdPerMt) + ' / MT', 'Contract value', usd(c.fobUsd)],
+  ].concat(termPerMt ? [[buyerTerm + ' ' + (pod || '') + ' (buyer\'s term)', usd(termPerMt) + ' / MT' + (isAi('b_freight') ? AI : ''), buyerTerm + ' contract value', usd(termUsd)]] : []).concat([
     ['Our net profit', inr(c.margin) + ' (' + usd(c.marginUsd) + ')', 'Margin / ROCE', marginPct + '% on cargo / ' + (c.margin / c.cost * 100).toFixed(2) + '% on capital'],
     ['Buyer landed cost', B ? usd(B.landedPerMt) + ' / MT' + (aiBuyer ? AI : '') : 'Not available', 'Buyer profit', B && B.sell ? usd(B.profit) + ' (' + B.roi + '%)' : 'Not available'],
-  ], { head: false, widths: [95, 160, 105, 150] });
+  ]), { head: false, widths: [95, 160, 105, 150] });
   table([['Criterion', 'Status', 'Detail']].concat(decision.rows),
     { widths: [130, 60, 320], colour: decision.rows.map((r, i) => [i + 1, 1, stColour[r[1]]]) });
   para(decision.verdict === 'NO-GO' ? 'Do not commit funds or confirm the price until every STOP line is resolved.'
@@ -1592,7 +1645,8 @@ function costingRow_(sheet, row, cfg, inp) {
     [commodityFull + (val('crop_year') ? ' (crop ' + val('crop_year') + ')' : '') + '\n- ' + specs.join('\n- '), mt + ' MT\n(' + c.bags + ' bags)',
      inr(c.fobPerMt) + ' / MT\n' + usd(c.fobUsdPerMt) + ' / MT', inr(c.fob) + '\n' + usd(c.fobUsd)],
     ['TOTAL FOB ' + pol.toUpperCase() + ' CONTRACT VALUE', '', '', usd(c.fobUsd)],
-  ], { widths: [250, 70, 95, 95], dark: [2] });
+  ].concat(termPerMt ? [['Alternative on the buyer\'s term: ' + buyerTerm + ' ' + pod + ' (ocean freight ' + usd(frUsd / c.containers) + ' / container' + (isAi('b_freight') ? ', web estimate: confirm before quoting' : '') + ')', mt + ' MT', usd(termPerMt) + ' / MT', usd(termUsd)]] : []),
+  { widths: [250, 70, 95, 95], dark: [2] });
   table([
     ['Commercial terms & scope', 'Turnaround & execution schedule'],
     ['- Incoterm: FOB ' + pol + ' (Incoterms 2020)\n- Included: milling, packing, inland freight, pre-FOB insurance, CFS rebagging & stuffing, fumigation, CHA clearance, phyto, COO' + (inspectionCosted ? ', ' + (val('dest_inspection') || 'destination inspection') : '') + ', bank e-BRC documentation\n- Currency benchmark: 1 USD = INR ' + fx + '\n- Quotation validity: ' + validDays + ' calendar days',
@@ -1660,7 +1714,6 @@ function costingRow_(sheet, row, cfg, inp) {
     const br = [['Cost & realisation component', 'Per MT (USD)', 'Total (USD)']].concat(B.rows.map(r => [r.label + tag(r.label), usd(r.perMt), usd(r.total) + (r.kind === 'total' ? loc(r.total) : '')]));
     const subs = [], tot = [];
     B.rows.forEach((r, i) => { if (r.kind === 'sub') subs.push(i + 1); if (r.kind === 'total') tot.push(i + 1); });
-    if (isAi('b_ins_pct')) br.forEach(r => { if (/^Marine insurance/.test(r[0])) r[0] += AI; });
     if (B.sell) {
       br.push(['Projected importer sales realisation (at ' + usd(B.sellPerMt) + ' / MT)' + (sellAi || isAi('m_whole_low') && !num_(inp.v.b_sell) ? AI : ''), usd(B.sellPerMt), usd(B.sell) + loc(B.sell)]);
       br.push(['PROJECTED IMPORTER NET PROFIT (' + B.roi + '% ROI)', (B.profit >= 0 ? '+' : '') + usd(B.profitPerMt), (B.profit >= 0 ? '+' : '') + usd(B.profit) + loc(B.profit)]);
@@ -1683,7 +1736,7 @@ function costingRow_(sheet, row, cfg, inp) {
     r.heldMarginPct.toFixed(2) + '%', r.buyerLandedPerMt == null ? '-' : usd(r.buyerLandedPerMt), r.buyerRoi == null ? '-' : r.buyerRoi.toFixed(2) + '%'])),
     { widths: [150, 95, 90, 95, 80], bold: [1] });
   kv([['Our break-even FOB (zero margin)', usd(sens.breakEven) + ' / MT'], ['Our lowest FOB for a GO margin (' + minMarginS + '%)', usd(sens.minFob) + ' / MT'],
-    ['Highest FOB the buyer can pay and keep ' + minBuyerS + '%', sens.buyerMax == null ? 'Needs the buyer selling price or market prices' : usd(sens.buyerMax) + ' / MT'],
+    ['Highest FOB the buyer can pay and keep ' + minBuyerS + '%', sens.buyerMax == null ? 'Needs the buyer selling price or market prices' : sens.buyerMax <= 0 ? 'None: even at FOB USD 0 the buyer cannot make ' + minBuyerS + '%' : usd(sens.buyerMax) + ' / MT'],
     ['Negotiation range', sens.buyerMax == null ? '-' : sens.buyerMax >= sens.minFob ? usd(sens.minFob) + ' to ' + usd(sens.buyerMax) + ' / MT' : 'None at these figures']]);
 
   // ---------- 6. Payment ----------
@@ -1784,7 +1837,7 @@ function costingRow_(sheet, row, cfg, inp) {
     { widths: [150, 150, 210] });
 
   // ---------- 12. Incoterms matrix ----------
-  const term = (String(val('incoterm')).match(/^(FOB|CFR|CIF)/i) || ['FOB'])[0].toUpperCase();
+  const term = buyerTerm;
   H('Incoterms 2020 allocation matrix: ' + term + ' ' + (term === 'FOB' ? pol : pod));
   const ours = 'INCLUDED', theirs = 'BUYER\'S ACCOUNT';
   table([['Cost / milestone', 'Bhumi Varahi', 'Buyer']].concat([
@@ -2042,7 +2095,7 @@ function researchPrompt_(p, c, o) {
     '',
     'At the very end, add a fenced ```json block with your best current figures as plain numbers (null when not found), using exactly these keys:',
     '{"origin_costs_inr":[{"item":"<exact cost item name from the list>","rate":null}],"india_fob_usd_per_mt_typical":null,"marine_insurance_pct_of_cfr":null,"pre_shipment_inspection_required":null,"pre_shipment_inspection_name":null,"overland_corridor":null,"sea_transit_days":null,"overland_transit_days":null,"ocean_freight_usd_per_20ft":null,"carrier_local_usd_per_20ft":null,"dest_port_usd_per_20ft":null,"dest_lolo_usd_per_20ft":null,"inland_trucking_usd_per_20ft":null,"transit_bond_usd_per_20ft":null,"import_duty_pct":null,"other_levies_pct":null,"import_clearing_usd_per_20ft":null,"import_vat_pct":null,"local_currency":null,"local_per_usd":null,"wholesale_local_per_kg_low":null,"wholesale_local_per_kg_high":null,"semi_wholesale_local_per_kg_low":null,"semi_wholesale_local_per_kg_high":null,"retail_local_per_kg_low":null,"retail_local_per_kg_high":null,"dest_standard":null,"dest_moisture_max":null,"dest_broken_max":null,"dest_aflatoxin_max":null}',
-    'Use the import duty that applies today (including any stay of application), and per-container figures for one 20 ft container. other_levies_pct must only include non-recoverable levies (not VAT, not withholding or advance income tax). india_fob_usd_per_mt_typical is the current typical FOB price from Indian ports for this exact product and grade. pre_shipment_inspection_required is true or false; transit days are numbers or ranges like "16-20". origin_costs_inr has one entry per origin cost item listed above, with the item name copied exactly and the INR rate per its unit.'
+    'Use the import duty that applies today (including any stay of application), and per-container figures for one 20 ft container. other_levies_pct must only include non-recoverable levies (not VAT, not withholding or advance income tax). india_fob_usd_per_mt_typical is the current typical FOB price from Indian ports for this exact product and grade. pre_shipment_inspection_required is true or false; transit days are numbers or ranges like "16-20". origin_costs_inr has one entry per origin cost item listed above, with the item name copied exactly (without the "(per ...)" part) and the INR rate per its unit.'
   ].join('\n');
 }
 
