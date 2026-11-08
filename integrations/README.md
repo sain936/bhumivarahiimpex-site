@@ -35,14 +35,14 @@ and an email alert goes to info@bhumivarahiimpex.com.
      - origin shipping, including port of loading and containers
      - destination route, including port of discharge, final inland destination, corridor, transit regime, inspection, consignee, notify party and clearing agent
      - USD rate, margin and GST
-     - buyer landed cost: freight, local charges, insurance, port, **destination Lo-Lo**, trucking, bond, duty with any minimum, clearing, VAT, selling price and local currency
+     - buyer landed cost: freight, local charges, insurance, port, **destination Lo-Lo**, trucking, bond, duty with any minimum, non-recoverable levies, clearing, VAT, selling price and local currency. Import VAT is shown as a cash outlay at clearance and not counted as cost, unless you set "Is import VAT recoverable" to N
      - contract clauses
      - timeline
      - approver names
 
      At the bottom are this deal's **cost lines**, copied from Cost Rates, which you can edit for this deal only. **Lo-Lo (lift on / lift off)** is included by default with no rate, so the costing will not run until you enter it, or set Include to N.
   2. Choose **Bhumi Varahi → Create internal costing**, from the IC tab or the RFQ row. It lists anything still missing. Otherwise it builds the **Consignment Decision Dossier**, numbered BV-IC-2026-001 and so on, in the Drive folder **Bhumi Varahi Internal Costing**. It is never emailed.
-     - **Page 1:** a **GO / GO WITH CONDITIONS / NO-GO** verdict, the key numbers, and a scorecard. The scorecard covers our margin against a minimum, the buyer's target price, payment security, registrations, buyer profitability, price against the destination market, a mill price left at its default, destination inspection and pending buyer documents.
+     - **Page 1:** a **GO / GO WITH CONDITIONS / NO-GO** verdict, the key numbers, and a scorecard. The scorecard covers our margin against a minimum, the buyer's target price, payment security, registrations, buyer profitability, our FOB against the typical India FOB for this product (below 75% is a STOP), price against the destination market, a mill price left at its default, a required destination inspection such as PVoC that is not costed (a STOP), and pending buyer documents.
      - **The rest follows the sample dossier:**
        - executive summary
        - buyer-view proforma, with scope and turnaround
