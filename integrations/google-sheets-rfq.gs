@@ -1239,13 +1239,15 @@ function prepareCostingInputs() {
   const row = sheet.getActiveRange().getRow();
   if (row < 2) { ui.alert('Click a cell in an RFQ row (not the header) first.'); return; }
   const p = rfqFromRow_(sheet, row);
-  const ic = icSheet_(p, setupCosting_(), true);
+  const cfg = setupCosting_();
+  const ic = icSheet_(p, cfg, true);
+  if (!ic.created) icQuoteCols_(ic.sheet);
+  const w = prefillWeb_(ic.sheet, p, cfg);
   ic.sheet.activate();
-  ui.alert(ic.created
+  ui.alert((ic.created
     ? 'Tab "' + ic.sheet.getName() + '" is ready, filled with what the RFQ and your defaults already say.' +
       (ic.prefilled ? ' ' + ic.prefilled + ' line(s) have quotes from earlier deals on this route (columns H and I).' : '') + '\n\nCheck every value, fill the yellow (required) cells and anything else you know, then choose Bhumi Varahi -> Create internal costing.'
-    : 'Opened the existing input tab "' + ic.sheet.getName() + '".');
-  if (!ic.created) icQuoteCols_(ic.sheet);
+    : 'Opened the existing input tab "' + ic.sheet.getName() + '" and refreshed the web prices in column J.') + webNote_(w));
 }
 
 function createInternalCosting() {
@@ -1264,10 +1266,11 @@ function createInternalCosting() {
   const p = rfqFromRow_(rfqs, row);
   const ic = icSheet_(p, cfg, true);
   if (ic.created) {
+    const w = prefillWeb_(ic.sheet, p, cfg);
     ic.sheet.activate();
     ui.alert('First, the inputs. Tab "' + ic.sheet.getName() + '" is ready with what we already know.' +
       (ic.prefilled ? '\n\n' + ic.prefilled + ' line(s) have quotes from earlier deals on this route in columns H and I, with their dates. Replace them with fresh quotes where you can.' : '') +
-      '\n\nCheck it, fill the yellow cells, then run Create internal costing again.');
+      '\n\nCheck it, fill the yellow cells, then run Create internal costing again.' + webNote_(w));
     return;
   }
   icQuoteCols_(ic.sheet);
@@ -1276,6 +1279,61 @@ function createInternalCosting() {
   if (r.missing) { ic.sheet.activate(); ui.alert('Please fill these in the "' + ic.sheet.getName() + '" tab first:\n\n- ' + r.missing.join('\n- ')); return; }
   ui.alert(r.message);
 }
+
+// Gemini research for an input tab's values. Returns null (no key), { error } or the research.
+function researchInputs_(p, V, c, S, lines) {
+  const val = k => (V[k] === '' || V[k] == null) ? '' : String(V[k]);
+  const finalDest = val('final_dest'), country = val('buyer_country');
+  const rp = Object.assign({}, p, { commodity: val('commodity'), grade: val('variety'), packing: (num_(V.bag_kg) || 50) + ' kg ' + val('bag_type'),
+    port: val('pod') + (finalDest ? ', ' + country + ' (transit)' : ''), final_dest: finalDest, country: country, incoterm: val('incoterm'), payment: val('payment_option') });
+  return researchDestination_(rp, c, { mt: num_(V.qty_mt), pol: val('pol'), fx: num_(V.fx), lines: (lines || []).filter(x => x.include),
+    model: String(setting_(S, 'Gemini model', 'gemini-3.8-flash')) });
+}
+
+// Every input Gemini has a figure for, as { key: value } (nothing is written into Value). Pure.
+function webFields_(fig, transit) {
+  const W = {};
+  if (!fig) return W;
+  applyAiFigures_(W, fig, transit);
+  if (num_(fig.india_mill_price_inr_per_100kg_typical) != null) W.mill_price = num_(fig.india_mill_price_inr_per_100kg_typical);
+  return W;
+}
+
+// Runs Gemini when the input tab is prepared, and puts its web / market figures in column J beside
+// each input, with the research summary and sources at the bottom. Your own values are not touched.
+function prefillWeb_(sh, p, cfg) {
+  const S = cfg.settings;
+  if (/^n/i.test(String(setting_(S, 'Gemini research (Y/N)', 'Y')))) return { off: true };
+  const inp = readIc_(sh), V = inp.v;
+  const mt = num_(V.qty_mt), fx = num_(V.fx), mill = num_(V.mill_price);
+  let c = null;
+  if (mt > 0 && fx > 0 && mill > 0) {
+    c = computeCosting_({ fx: fx, mt: mt, bagKg: num_(V.bag_kg), containerMt: num_(V.mt_per_ctr), millPer100kg: mill, commodity: String(V.commodity || ''),
+      mill: '', rates: inp.lines, marginPct: num_(V.margin_pct) || 0, gstPct: num_(V.gst_pct) });
+  }
+  if (!c) c = { containers: Math.max(1, Math.ceil((mt || 25) / (num_(V.mt_per_ctr) || 25) - 1e-9)), fobUsdPerMt: null };
+  const r = researchInputs_(p, V, c, S, inp.lines);
+  if (!r) return { nokey: true };
+  if (r.error) return { error: r.error };
+  const fig = r.figures || {};
+  const web = { fields: webFields_(fig, !!V.final_dest), lines: {} };
+  originEstimates_(fig.origin_costs_inr, r.text, inp.lines).forEach(e => { web.lines[e.item] = e.rate; });
+  writeWebEstimates_(sh, web);
+  // Research summary and sources at the bottom of the tab (replaced on each run)
+  const day = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd MMM yyyy');
+  const notes = [['#', '12. Web research by Gemini (' + day + '): verify before use. Figures are in column J beside each input', '', ''],
+    ['web', 'Research summary', '', String(r.text).slice(0, 45000)],
+    ['web', 'Sources', '', r.sources.map((x, i) => (i + 1) + '. ' + x.title + ' ' + x.uri).join('\n')]];
+  const ab = sh.getRange(1, 1, sh.getLastRow(), 2).getValues();
+  let at = ab.findIndex(x => x[0] === '#' && /^12\. Web research/.test(String(x[1])));
+  at = at >= 0 ? at + 1 : sh.getLastRow() + 2;
+  sh.getRange(at, 1, notes.length, 4).setValues(notes);
+  sh.getRange(at, 2, 1, 3).setFontWeight('bold').setBackground('#F8F5EC').setFontColor('#8A6508');
+  return { filled: Object.keys(web.fields).length + Object.keys(web.lines).length, sources: r.sources.length };
+}
+const webNote_ = w => !w ? '' : w.off ? '' : w.nokey ? '\n\nGemini web prices were not added: set the key with Bhumi Varahi -> Set Gemini API key.'
+  : w.error ? '\n\nGemini web prices could not be added this time: ' + w.error
+  : '\n\nGemini added web / market figures for ' + w.filled + ' inputs in column J (from ' + w.sources + ' sources), with a research summary at the bottom of the tab. Use them as a guide while you enter your own values.';
 
 // Writes Gemini's latest logistics estimates into column J of the input tab, beside the quotes.
 function writeWebEstimates_(sh, web) {
@@ -1460,9 +1518,7 @@ function costingRow_(sheet, row, cfg, inp) {
   // Destination research first, so its figures can fill empty buyer-side inputs.
   let research = null;
   if (!/^n/i.test(String(setting_(S, 'Gemini research (Y/N)', 'Y')))) {
-    const rp = Object.assign({}, p, { commodity: val('commodity'), grade: val('variety'), packing: bagKg + ' kg ' + val('bag_type'),
-      port: pod + (finalDest ? ', ' + country + ' (transit)' : ''), final_dest: finalDest, country: country, incoterm: val('incoterm'), payment: val('payment_option') });
-    research = researchDestination_(rp, c, { mt: mt, pol: pol, fx: fx, lines: inp.lines.filter(x => x.include), model: String(setting_(S, 'Gemini model', 'gemini-3.8-flash')) });
+    research = researchInputs_(p, V, c, S, inp.lines);
   }
   const aiFilled = research && !research.error ? applyAiFigures_(V, research.figures, !!finalDest) : [];
   const isAi = k => aiFilled.indexOf(k) >= 0;
@@ -1923,7 +1979,7 @@ function costingRow_(sheet, row, cfg, inp) {
   note.setValue(note.getValue() ? note.getValue() + ' · ' + stamp : stamp);
   return {
     costNo: costNo, pdfUrl: pdf.getUrl(), calc: c, buyer: B, decision: decision, aiFilled: aiFilled, quotes: allQ,
-    web: Object.keys(webField).length || Object.keys(webLine).length ? { fields: webField, lines: webLine } : null,
+    web: research && !research.error ? { fields: Object.assign(webFields_(fig, !!finalDest), webField), lines: webLine } : null,
     message: costNo + ' created (internal, not sent to anyone).\n\nDECISION: ' + decision.verdict +
       decision.rows.filter(r => r[1] !== 'GO').map(r => '\n- ' + r[1] + ': ' + r[0] + '. ' + r[2]).join('') +
       '\n\nFOB price to quote: ' + usd(c.fobUsdPerMt) + ' / MT  (' + usd(c.fobUsd) + ' total)\nOur net profit: ' + usd(c.marginUsd) +
@@ -2073,7 +2129,7 @@ function researchPrompt_(p, c, o) {
     'You are an export analyst for Bhumi Varahi Impex Pvt Ltd, an Indian agri-commodity exporter. Research this consignment using Google Search and current, official sources where possible.',
     '',
     'Consignment: ' + [p.commodity, p.grade].filter(Boolean).join(', ') + ', ' + o.mt + ' MT in ' + c.containers + ' x 20 ft container(s), packed ' + (p.packing || '50 kg bags') + '.',
-    'Our price: FOB ' + o.pol + ', India at USD ' + c.fobUsdPerMt.toFixed(2) + ' per MT. Buyer destination: ' + dest + '. Buyer asked for: ' + (p.incoterm || 'not stated') + ', payment ' + (p.payment || 'not stated') + '.',
+    (c.fobUsdPerMt != null ? 'Our price: FOB ' + o.pol + ', India at USD ' + c.fobUsdPerMt.toFixed(2) + ' per MT.' : 'Our FOB price from ' + o.pol + ', India is not set yet.') + ' Buyer destination: ' + dest + '. Buyer asked for: ' + (p.incoterm || 'not stated') + ', payment ' + (p.payment || 'not stated') + '.',
     '',
     'Write these sections, each starting with a line "### <title>". Use short bullet lines starting with "- ". Give numbers with currency, units and the date or year of the figure.',
     '### India export rules',
@@ -2094,8 +2150,8 @@ function researchPrompt_(p, c, o) {
     'If you cannot find a reliable figure, write "Not found, check with CHA / buyer" instead of guessing. Do not invent licences or certifications for Bhumi Varahi Impex. Keep the whole answer under 800 words.',
     '',
     'At the very end, add a fenced ```json block with your best current figures as plain numbers (null when not found), using exactly these keys:',
-    '{"origin_costs_inr":[{"item":"<exact cost item name from the list>","rate":null}],"india_fob_usd_per_mt_typical":null,"marine_insurance_pct_of_cfr":null,"pre_shipment_inspection_required":null,"pre_shipment_inspection_name":null,"overland_corridor":null,"sea_transit_days":null,"overland_transit_days":null,"ocean_freight_usd_per_20ft":null,"carrier_local_usd_per_20ft":null,"dest_port_usd_per_20ft":null,"dest_lolo_usd_per_20ft":null,"inland_trucking_usd_per_20ft":null,"transit_bond_usd_per_20ft":null,"import_duty_pct":null,"other_levies_pct":null,"import_clearing_usd_per_20ft":null,"import_vat_pct":null,"local_currency":null,"local_per_usd":null,"wholesale_local_per_kg_low":null,"wholesale_local_per_kg_high":null,"semi_wholesale_local_per_kg_low":null,"semi_wholesale_local_per_kg_high":null,"retail_local_per_kg_low":null,"retail_local_per_kg_high":null,"dest_standard":null,"dest_moisture_max":null,"dest_broken_max":null,"dest_aflatoxin_max":null}',
-    'Use the import duty that applies today (including any stay of application), and per-container figures for one 20 ft container. other_levies_pct must only include non-recoverable levies (not VAT, not withholding or advance income tax). india_fob_usd_per_mt_typical is the current typical FOB price from Indian ports for this exact product and grade. pre_shipment_inspection_required is true or false; transit days are numbers or ranges like "16-20". origin_costs_inr has one entry per origin cost item listed above, with the item name copied exactly (without the "(per ...)" part) and the INR rate per its unit.'
+    '{"india_mill_price_inr_per_100kg_typical":null,"origin_costs_inr":[{"item":"<exact cost item name from the list>","rate":null}],"india_fob_usd_per_mt_typical":null,"marine_insurance_pct_of_cfr":null,"pre_shipment_inspection_required":null,"pre_shipment_inspection_name":null,"overland_corridor":null,"sea_transit_days":null,"overland_transit_days":null,"ocean_freight_usd_per_20ft":null,"carrier_local_usd_per_20ft":null,"dest_port_usd_per_20ft":null,"dest_lolo_usd_per_20ft":null,"inland_trucking_usd_per_20ft":null,"transit_bond_usd_per_20ft":null,"import_duty_pct":null,"other_levies_pct":null,"import_clearing_usd_per_20ft":null,"import_vat_pct":null,"local_currency":null,"local_per_usd":null,"wholesale_local_per_kg_low":null,"wholesale_local_per_kg_high":null,"semi_wholesale_local_per_kg_low":null,"semi_wholesale_local_per_kg_high":null,"retail_local_per_kg_low":null,"retail_local_per_kg_high":null,"dest_standard":null,"dest_moisture_max":null,"dest_broken_max":null,"dest_aflatoxin_max":null}',
+    'Use the import duty that applies today (including any stay of application), and per-container figures for one 20 ft container. other_levies_pct must only include non-recoverable levies (not VAT, not withholding or advance income tax). india_mill_price_inr_per_100kg_typical is the current typical ex-mill price in India for this exact product and grade, in INR per 100 kg (quintal). india_fob_usd_per_mt_typical is the current typical FOB price from Indian ports for this exact product and grade. pre_shipment_inspection_required is true or false; transit days are numbers or ranges like "16-20". origin_costs_inr has one entry per origin cost item listed above, with the item name copied exactly (without the "(per ...)" part) and the INR rate per its unit.'
   ].join('\n');
 }
 
