@@ -718,6 +718,11 @@ const COST_SETTINGS_TAB = 'Cost Settings';
 const COST_RATES_TAB = 'Cost Rates';
 const COSTING_FOLDER = 'Bhumi Varahi Internal Costing';
 const IC_PREFIX = 'IC ';
+const QUOTE_LOG_TAB = 'Logistics Quote Log';
+// Destination-side inputs that take logistics quotes (USD per 20 ft container), with their Gemini keys.
+const QUOTE_FIELDS = { b_freight: 'ocean_freight_usd_per_20ft', b_local: 'carrier_local_usd_per_20ft', b_port: 'dest_port_usd_per_20ft',
+  b_lolo: 'dest_lolo_usd_per_20ft', b_inland: 'inland_trucking_usd_per_20ft', b_bond: 'transit_bond_usd_per_20ft', b_clear: 'import_clearing_usd_per_20ft' };
+const QUOTE_HEAD = ['Quote A (vendor: amount)', 'Quote B (vendor: amount)', 'Web estimate (Gemini, filled on each run)'];
 const COST_SETTINGS_DEFAULT = [
   ['USD rate (INR per 1 USD)', 94.85],
   ['MT per 20 ft container', 25],
@@ -1066,12 +1071,13 @@ function icSheet_(p, cfg, create) {
   if (sh || !create) return { sheet: sh, created: false };
   sh = ss.insertSheet(name);
   const d = icDefaults_(p, cfg.settings);
-  const rows = [['key', 'Input', 'Value', 'Help']];
-  IC_FIELDS.forEach(f => rows.push(f[0] === '#' ? ['#', f[1], '', ''] : [f[0], f[1], d[f[0]] == null ? '' : d[f[0]], (f[2] ? 'Required. ' : '') + (f[3] || '')]));
-  rows.push(['#', '11. Cost lines for this deal (copied from "' + COST_RATES_TAB + '"; edit rates or Include for this deal only)', '', '']);
-  rows.push(['__lines__', 'Cost item', 'Rate (INR)', 'Per (MT / bag / container / shipment)', 'GST (Y/N)', 'Include (Y/N)', 'Basis']);
+  const rows = [['key', 'Input', 'Value', 'Help', '', '', ''].concat(QUOTE_HEAD)];
+  IC_FIELDS.forEach(f => rows.push(f[0] === '#' ? ['#', f[1], '', ''] : [f[0], f[1], d[f[0]] == null ? '' : d[f[0]],
+    (f[2] ? 'Required. ' : '') + (f[3] || '') + (QUOTE_FIELDS[f[0]] ? (f[3] ? '. ' : '') + 'Put forwarder / agent quotes in columns H and I; if Value is blank the lowest quote is used' : '')]));
+  rows.push(['#', '11. Cost lines for this deal (copied from "' + COST_RATES_TAB + '"; edit rates or Include for this deal only. Put CHA / CFS / transporter quotes in columns H and I, e.g. "Sea Hawk CHA: 2400")', '', '']);
+  rows.push(['__lines__', 'Cost item', 'Rate (INR)', 'Per (MT / bag / container / shipment)', 'GST (Y/N)', 'Include (Y/N)', 'Basis'].concat(QUOTE_HEAD));
   cfg.rates.forEach(x => rows.push(['line', x.item, x.rate == null ? '' : x.rate, x.per, x.gst ? 'Y' : 'N', x.include ? 'Y' : 'N', x.basis]));
-  const width = 7;
+  const width = 10;
   sh.getRange(1, 3, rows.length + 200, 1).setNumberFormat('@');
   sh.getRange(1, 1, rows.length, width).setValues(rows.map(r => r.concat(Array(width - r.length).fill(''))));
   sh.getRange(1, 1, 1, width).setFontWeight('bold').setBackground('#1B4D3E').setFontColor('#FFFFFF');
@@ -1079,8 +1085,9 @@ function icSheet_(p, cfg, create) {
     if (r[0] === '#') sh.getRange(i + 1, 2, 1, width - 1).setFontWeight('bold').setBackground('#F8F5EC').setFontColor('#8A6508');
     else if (r[0] === '__lines__') sh.getRange(i + 1, 2, 1, width - 1).setFontWeight('bold').setBackground('#1B4D3E').setFontColor('#FFFFFF');
     else if (/^Required/.test(String(r[3])) || (r[0] === 'line' && r[2] === '' && r[5] === 'Y')) sh.getRange(i + 1, 3).setBackground('#FFF3C4');
+    if (r[0] === 'line' || QUOTE_FIELDS[r[0]]) sh.getRange(i + 1, 8, 1, 2).setBackground('#E8F1FB');
   });
-  sh.setColumnWidth(2, 330); sh.setColumnWidth(3, 300); sh.setColumnWidth(4, 360); sh.setColumnWidths(5, 3, 110);
+  sh.setColumnWidth(2, 330); sh.setColumnWidth(3, 300); sh.setColumnWidth(4, 360); sh.setColumnWidths(5, 3, 110); sh.setColumnWidths(8, 3, 190);
   sh.hideColumns(1); sh.setFrozenRows(1);
   return { sheet: sh, created: true };
 }
@@ -1092,18 +1099,49 @@ function icValue_(k, x) {
   return typeof x === 'string' ? x.trim() : x;
 }
 
-// Reads the input tab into { v: {key: value}, lines: [...], missing: [labels] }.
+// Adds the quote column headings to an input tab made before quotes existed.
+function icQuoteCols_(sh) {
+  const data = sh.getRange(1, 1, sh.getLastRow(), 8).getValues();
+  data.forEach((r, i) => {
+    if ((i === 0 || r[0] === '__lines__') && !r[7]) sh.getRange(i + 1, 8, 1, 3).setValues([QUOTE_HEAD]).setFontWeight('bold').setBackground('#1B4D3E').setFontColor('#FFFFFF');
+  });
+}
+
+// "Maersk: USD 2,150", "2150" or 2150 -> { vendor, amt }. Null when there is no number.
+function parseQuote_(x) {
+  if (x === '' || x == null) return null;
+  if (typeof x === 'number') return isFinite(x) ? { vendor: '', amt: x } : null;
+  const s = String(x).trim(), nums = s.match(/\d[\d,]*(?:\.\d+)?/g);
+  if (!nums) return null;
+  const last = nums[nums.length - 1];
+  const vendor = s.slice(0, s.lastIndexOf(last)).replace(/\s*(INR|USD|Rs\.?|₹|\$)\s*$/i, '').replace(/[\s:\-–=@]+$/, '').trim();
+  return { vendor: vendor, amt: Number(last.replace(/,/g, '')) };
+}
+const lowest_ = qs => qs.slice().sort((a, b) => a.amt - b.amt)[0] || null;
+
+// Reads the input tab into { v: {key: value}, lines: [...], missing: [labels], quotes: {key: [..]}, src: {key: 'quote'} }.
+// A blank Value or Rate with quotes in columns H / I takes the lowest quote.
 function readIc_(sh) {
-  const data = sh.getRange(1, 1, sh.getLastRow(), 7).getValues();
-  const v = {}, lines = [];
+  const data = sh.getRange(1, 1, sh.getLastRow(), 10).getValues();
+  const v = {}, lines = [], quotes = {}, src = {};
+  const qOf = r => [parseQuote_(r[7]), parseQuote_(r[8])].filter(Boolean);
   const labels = {};
   IC_FIELDS.forEach(f => { if (f[0] !== '#') labels[f[0]] = f; });
   data.forEach(r => {
     const k = String(r[0]);
     if (k === 'line') {
-      if (r[1]) lines.push({ item: String(r[1]), rate: num_(r[2]), per: String(r[3] || 'shipment').toLowerCase().trim(),
-                                              gst: /^y/i.test(String(r[4])), include: !/^n/i.test(String(r[5])), basis: String(r[6] || '') });
-    } else if (labels[k]) v[k] = icValue_(k, r[2]);
+      if (!r[1]) return;
+      const x = { item: String(r[1]), rate: num_(r[2]), per: String(r[3] || 'shipment').toLowerCase().trim(),
+                  gst: /^y/i.test(String(r[4])), include: !/^n/i.test(String(r[5])), basis: String(r[6] || ''), quotes: qOf(r) };
+      if (x.rate == null && x.quotes.length) { x.rate = lowest_(x.quotes).amt; x.fromQuote = true; }
+      lines.push(x);
+    } else if (labels[k]) {
+      v[k] = icValue_(k, r[2]);
+      if (QUOTE_FIELDS[k]) {
+        quotes[k] = qOf(r);
+        if ((v[k] === '' || v[k] == null) && quotes[k].length) { v[k] = lowest_(quotes[k]).amt; src[k] = 'quote'; }
+      }
+    }
   });
   const missing = Object.keys(labels).filter(k => labels[k][2] && (v[k] === '' || v[k] == null)).map(k => labels[k][1]);
   // An included cost line must have a rate (0 is allowed when it truly costs nothing).
@@ -1111,7 +1149,7 @@ function readIc_(sh) {
   ['qty_mt', 'bag_kg', 'mill_price', 'mt_per_ctr', 'fx'].forEach(k => {
     if (v[k] !== '' && v[k] != null && !(num_(v[k]) > 0)) missing.push(labels[k][1] + ' (must be a number above 0)');
   });
-  return { v, lines, missing };
+  return { v, lines, missing, quotes, src };
 }
 
 function prepareCostingInputs() {
@@ -1126,6 +1164,7 @@ function prepareCostingInputs() {
   ui.alert(ic.created
     ? 'Tab "' + ic.sheet.getName() + '" is ready, filled with what the RFQ and your defaults already say.\n\nCheck every value, fill the yellow (required) cells and anything else you know, then choose Bhumi Varahi -> Create internal costing.'
     : 'Opened the existing input tab "' + ic.sheet.getName() + '".');
+  if (!ic.created) icQuoteCols_(ic.sheet);
 }
 
 function createInternalCosting() {
@@ -1148,9 +1187,40 @@ function createInternalCosting() {
     ui.alert('First, the inputs. Tab "' + ic.sheet.getName() + '" is ready with what we already know.\n\nCheck it, fill the yellow cells, then run Create internal costing again.');
     return;
   }
+  icQuoteCols_(ic.sheet);
   const r = costingRow_(rfqs, row, cfg, readIc_(ic.sheet));
+  if (r.web) writeWebEstimates_(ic.sheet, r.web);
   if (r.missing) { ic.sheet.activate(); ui.alert('Please fill these in the "' + ic.sheet.getName() + '" tab first:\n\n- ' + r.missing.join('\n- ')); return; }
   ui.alert(r.message);
+}
+
+// Writes Gemini's latest logistics estimates into column J of the input tab, beside the quotes.
+function writeWebEstimates_(sh, web) {
+  const data = sh.getRange(1, 1, sh.getLastRow(), 2).getValues();
+  data.forEach((r, i) => {
+    const x = r[0] === 'line' ? web.lines[String(r[1])] : web.fields[String(r[0])];
+    if (x != null) sh.getRange(i + 1, 10).setValue(x);
+  });
+}
+
+// Compares each cost line with its written quotes and the web estimate. Pure.
+// items: [{ label, unit, used, src ('entered' | 'quote' | 'AI'), quotes: [{vendor, amt}], web }]
+function compareQuotes_(items) {
+  return items.map(x => {
+    const low = lowest_(x.quotes || []), notes = [];
+    let flag = 'ok';
+    if (low && x.used != null && x.used > low.amt * 1.1) {
+      flag = 'high';
+      notes.push(Math.round((x.used / low.amt - 1) * 100) + '% above the lowest quote' + (low.vendor ? ' (' + low.vendor + ')' : ''));
+    }
+    if (x.web != null && x.web > 0 && x.used != null && x.src !== 'AI') {
+      const g = (x.used - x.web) / x.web * 100;
+      if (Math.abs(g) > 40) { if (flag === 'ok') flag = 'web'; notes.push(Math.abs(Math.round(g)) + '% ' + (g > 0 ? 'above' : 'below') + ' the web estimate: re-check'); }
+    }
+    if (!(x.quotes || []).length) { if (flag === 'ok') flag = x.src === 'AI' ? 'aionly' : 'noquote'; notes.push(x.src === 'AI' ? 'Web estimate only: get a written quote' : 'No written quote entered'); }
+    else if (flag === 'ok') notes.push(x.used <= low.amt ? 'Lowest quote used' : 'Within 10% of the lowest quote');
+    return Object.assign({}, x, { low: low, flag: flag, note: notes.join('. ') });
+  });
 }
 
 // Fills empty buyer-side and market inputs from Gemini's figures. Returns the keys it filled. Pure.
@@ -1223,6 +1293,14 @@ function decide_(o) {
   // 8. Destination inspection
   if (o.inspectionNeeded && !o.inspectionCosted) add('Destination inspection', 'STOP', o.inspection + (o.inspectionAi ? ' (AI est.)' : '') + ' is required but its cost is not in the costing. Set the PVoC / CoC cost line to Include = Y (or enter the agency quote).');
   else if (o.inspectionNeeded) add('Destination inspection', 'GO', o.inspection + ' costed');
+  // 8b. Logistics rates against quotes and web estimates
+  if (o.logistics) {
+    const L = o.logistics, bits = [];
+    if (L.high.length) bits.push('Costed above the lowest quote: ' + L.high.join(', '));
+    if (L.web.length) bits.push('Far from the web estimate: ' + L.web.join(', '));
+    if (L.aiOnly.length) bits.push('Web estimate only, no written quote: ' + L.aiOnly.join(', '));
+    if (bits.length || L.quoted) add('Logistics quotes', bits.length ? 'WATCH' : 'GO', bits.length ? bits.join('. ') : L.quoted + ' cost line(s) match the written quotes');
+  }
   // 9. Buyer documents
   add('Buyer documents', o.buyerPending ? 'WATCH' : 'GO', o.buyerPending ? o.buyerPending + ' items still pending from the buyer' : 'All received');
   const verdict = rows.some(r => r[1] === 'STOP') ? 'NO-GO' : rows.some(r => r[1] === 'WATCH') ? 'GO WITH CONDITIONS' : 'GO';
@@ -1247,11 +1325,30 @@ function costingRow_(sheet, row, cfg, inp) {
   if (!/^n/i.test(String(setting_(S, 'Gemini research (Y/N)', 'Y')))) {
     const rp = Object.assign({}, p, { commodity: val('commodity'), grade: val('variety'), packing: bagKg + ' kg ' + val('bag_type'),
       port: pod + (finalDest ? ', ' + country + ' (transit)' : ''), final_dest: finalDest, country: country, incoterm: val('incoterm'), payment: val('payment_option') });
-    research = researchDestination_(rp, c, { mt: mt, pol: pol, fx: fx, model: String(setting_(S, 'Gemini model', 'gemini-3.8-flash')) });
+    research = researchDestination_(rp, c, { mt: mt, pol: pol, fx: fx, lines: inp.lines.filter(x => x.include), model: String(setting_(S, 'Gemini model', 'gemini-3.8-flash')) });
   }
   const aiFilled = research && !research.error ? applyAiFigures_(V, research.figures, !!finalDest) : [];
   const isAi = k => aiFilled.indexOf(k) >= 0;
   const AI = ' (AI est.)';
+
+  // Logistics quotes vs web estimates
+  const fig = (research && !research.error && research.figures) || {};
+  const webField = {}, webLine = {};
+  Object.keys(QUOTE_FIELDS).forEach(k => { const x = num_(fig[QUOTE_FIELDS[k]]); if (x != null && fig[QUOTE_FIELDS[k]] !== '') webField[k] = x; });
+  (Array.isArray(fig.origin_costs_inr) ? fig.origin_costs_inr : []).forEach(e => {
+    const m = e && num_(e.rate) != null && inp.lines.find(l => l.item.toLowerCase() === String(e.item || '').toLowerCase().trim());
+    if (m) webLine[m.item] = num_(e.rate);
+  });
+  const fieldLabel = k => (IC_FIELDS.find(f => f[0] === k) || [k, k])[1].replace(/ per container \(USD\)$/, '');
+  const originQ = compareQuotes_(inp.lines.filter(l => l.include).map(l => ({ label: l.item, unit: 'INR / ' + l.per, used: l.rate,
+    src: l.fromQuote ? 'quote' : 'entered', quotes: l.quotes || [], web: webLine[l.item] })));
+  const destQ = compareQuotes_(Object.keys(QUOTE_FIELDS).map(k => ({ key: k, label: fieldLabel(k), unit: 'USD / container', used: num_(V[k]),
+    src: (inp.src || {})[k] === 'quote' ? 'quote' : isAi(k) ? 'AI' : 'entered', quotes: (inp.quotes || {})[k] || [], web: webField[k] }))
+    .filter(x => x.used || x.quotes.length || x.web != null));
+  const allQ = originQ.concat(destQ);
+  const logistics = allQ.some(x => x.quotes.length || x.web != null) ? {
+    high: allQ.filter(x => x.flag === 'high').map(x => x.label), web: allQ.filter(x => x.flag === 'web').map(x => x.label),
+    aiOnly: destQ.filter(x => x.flag === 'aionly' && x.used).map(x => x.label), quoted: allQ.filter(x => x.quotes.length).length } : null;
 
   // Market prices (local per kg) -> USD per MT
   const lfx = num_(V.local_fx), ccy = val('local_ccy') || 'local';
@@ -1291,7 +1388,7 @@ function costingRow_(sheet, row, cfg, inp) {
     wholesaleUsdLow: whole && lfx ? usdMt(whole.lo || whole.hi) : null,
     millDefault: num_(V.mill_price) === num_(setting_(S, 'Default mill price (INR per 100 kg)', '')), millPrice: num_(V.mill_price),
     inspectionNeeded: !!val('dest_inspection'), inspectionCosted: inspectionCosted, inspection: val('dest_inspection'), inspectionAi: isAi('dest_inspection'),
-    fobBenchmark: num_(V.fob_benchmark), benchAi: isAi('fob_benchmark'),
+    fobBenchmark: num_(V.fob_benchmark), benchAi: isAi('fob_benchmark'), logistics: logistics,
     buyerPending: buyerNeeds.filter(b => !b[1]).length });
 
   const grp = n => Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -1417,6 +1514,15 @@ function costingRow_(sheet, row, cfg, inp) {
   table([['Tariff / activity', 'Rate', 'Status & scope']].concat(inp.lines.map(x => [x.item, x.rate == null ? 'Rate not entered' : 'INR ' + grp(x.rate) + ' / ' + x.per + (x.gst ? ' + GST' : ''), (x.include ? 'Included. ' : 'Optional, not in this costing. ') + x.basis])),
     { widths: [170, 120, 220] });
   para('Statutory GST of ' + (num_(V.gst_pct) || 18) + '% applies to taxable CFS / CHA services and is claimable as export input credit. CTO / SRF and demurrage are charged at actuals when they occur.', { size: 8.5, color: GREY });
+  sub('Logistics quote comparison');
+  para('Logistics rates change with the destination, carrier and season. Each rate used here is set against the written quotes in the input tab (columns H and I) and Gemini\'s web estimate (column J). Web estimates are a guide only; book on written quotes.', { size: 8.5, color: GREY });
+  const qv = (q, cur) => q ? (q.vendor ? q.vendor + ': ' : '') + cur + ' ' + grp(q.amt) : '-';
+  const qTable = (list, cur) => table([['Cost item', 'Used in costing', 'Quote A', 'Quote B', 'Web estimate', 'Check']].concat(list.map(x => [
+    x.label + ' (' + x.unit.replace(/^\w+ \/ /, 'per ') + ')', x.used == null ? '-' : cur + ' ' + grp(x.used) + (x.src === 'quote' ? ' (lowest quote)' : x.src === 'AI' ? AI : ''),
+    qv(x.quotes[0], cur), qv(x.quotes[1], cur), x.web == null ? '-' : cur + ' ' + grp(x.web), x.note])), { widths: [125, 80, 80, 80, 70, 75] });
+  para('Origin (India side, INR)', { size: 9, bold: true });
+  qTable(originQ, 'INR');
+  if (destQ.length) { para('Destination side (USD per 20 ft container)', { size: 9, bold: true }); qTable(destQ, 'USD'); }
 
   // ---------- 4. Market intelligence ----------
   H('Destination market intelligence & pricing: ' + [country, finalDest].filter(Boolean).join(', '));
@@ -1650,11 +1756,14 @@ function costingRow_(sheet, row, cfg, inp) {
   docFile.moveTo(folder);
   const pdf = folder.createFile(docFile.getAs(MimeType.PDF).setName(costNo + ' INTERNAL.pdf'));
 
+  logQuotes_(p.ref, costNo, [pol, pod, finalDest].filter(Boolean).join(' -> ') + (country ? ', ' + country : ''), allQ);
+
   const note = sheet.getRange(row, 11);
   const stamp = costNo + ' ' + decision.verdict + ': FOB ' + usd(c.fobUsdPerMt) + '/MT, margin ' + marginPct + '% (internal)';
   note.setValue(note.getValue() ? note.getValue() + ' · ' + stamp : stamp);
   return {
-    costNo: costNo, pdfUrl: pdf.getUrl(), calc: c, buyer: B, decision: decision, aiFilled: aiFilled,
+    costNo: costNo, pdfUrl: pdf.getUrl(), calc: c, buyer: B, decision: decision, aiFilled: aiFilled, quotes: allQ,
+    web: Object.keys(webField).length || Object.keys(webLine).length ? { fields: webField, lines: webLine } : null,
     message: costNo + ' created (internal, not sent to anyone).\n\nDECISION: ' + decision.verdict +
       decision.rows.filter(r => r[1] !== 'GO').map(r => '\n- ' + r[1] + ': ' + r[0] + '. ' + r[2]).join('') +
       '\n\nFOB price to quote: ' + usd(c.fobUsdPerMt) + ' / MT  (' + usd(c.fobUsd) + ' total)\nOur net profit: ' + usd(c.marginUsd) +
@@ -1662,6 +1771,26 @@ function costingRow_(sheet, row, cfg, inp) {
       (research ? (research.error ? '\n\nGemini research failed: ' + research.error : '\n\nGemini research added (' + research.sources.length + ' sources' + (aiFilled.length ? '; filled ' + aiFilled.length + ' empty inputs' : '') + ').') : '') +
       '\n\nPDF: ' + pdf.getUrl() + '\nEditable copy: ' + docFile.getUrl()
   };
+}
+
+// Appends every quote and web estimate of a costing run to the "Logistics Quote Log" tab,
+// so rates can be compared across destinations and over time.
+function logQuotes_(ref, costNo, route, items) {
+  const rows = [], day = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd MMM yyyy');
+  items.forEach(x => {
+    x.quotes.forEach(q => rows.push([day, ref, costNo, route, x.label, x.unit, 'Written quote', q.vendor, q.amt, x.used == null ? '' : x.used]));
+    if (x.web != null) rows.push([day, ref, costNo, route, x.label, x.unit, 'Web estimate (Gemini)', '', x.web, x.used == null ? '' : x.used]);
+  });
+  if (!rows.length) return;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(QUOTE_LOG_TAB);
+  if (!sh) {
+    sh = ss.insertSheet(QUOTE_LOG_TAB);
+    sh.getRange(1, 1, 1, 10).setValues([['Date', 'RFQ No.', 'Costing No.', 'Route', 'Cost item', 'Unit', 'Source', 'Vendor', 'Amount', 'Rate used in costing']])
+      .setFontWeight('bold').setBackground('#1B4D3E').setFontColor('#FFFFFF');
+    sh.setFrozenRows(1);
+  }
+  sh.getRange(sh.getLastRow() + 1, 1, rows.length, 10).setValues(rows);
 }
 
 // ===== GEMINI RESEARCH (for the internal costing) =====
@@ -1702,14 +1831,16 @@ function researchPrompt_(p, c, o) {
     '- Current wholesale and retail price ranges in local currency and converted to USD per MT, with the exchange rate used.',
     '### Buyer landed cost and margin',
     '- Starting from our FOB price, estimate ocean freight per 20 ft container from ' + o.pol + ' to ' + (portName_(p) || 'the nearest main port') + ', insurance, destination port charges' + (p.final_dest ? ', transit clearance and overland trucking to ' + p.final_dest : ' and inland charges') + ', and duty, giving a landed cost per MT. Compare it with the wholesale price and give the buyer\'s estimated margin per MT and per container. Show the calculation.',
+    '### India origin logistics',
+    '- Typical current rates at ' + o.pol + ' for these origin cost items, in INR per the unit shown: ' + (o.lines || []).map(l => l.item + ' (per ' + l.per + ')').join('; ') + '.',
     '### Risks and notes',
     '- Anything that could stop or delay the shipment, or change the price (for example policy changes, seasonality, currency).',
     '',
-    'If you cannot find a reliable figure, write "Not found, check with CHA / buyer" instead of guessing. Do not invent licences or certifications for Bhumi Varahi Impex. Keep the whole answer under 700 words.',
+    'If you cannot find a reliable figure, write "Not found, check with CHA / buyer" instead of guessing. Do not invent licences or certifications for Bhumi Varahi Impex. Keep the whole answer under 800 words.',
     '',
     'At the very end, add a fenced ```json block with your best current figures as plain numbers (null when not found), using exactly these keys:',
-    '{"india_fob_usd_per_mt_typical":null,"marine_insurance_pct_of_cfr":null,"pre_shipment_inspection_required":null,"pre_shipment_inspection_name":null,"overland_corridor":null,"sea_transit_days":null,"overland_transit_days":null,"ocean_freight_usd_per_20ft":null,"carrier_local_usd_per_20ft":null,"dest_port_usd_per_20ft":null,"dest_lolo_usd_per_20ft":null,"inland_trucking_usd_per_20ft":null,"transit_bond_usd_per_20ft":null,"import_duty_pct":null,"other_levies_pct":null,"import_clearing_usd_per_20ft":null,"import_vat_pct":null,"local_currency":null,"local_per_usd":null,"wholesale_local_per_kg_low":null,"wholesale_local_per_kg_high":null,"semi_wholesale_local_per_kg_low":null,"semi_wholesale_local_per_kg_high":null,"retail_local_per_kg_low":null,"retail_local_per_kg_high":null,"dest_standard":null,"dest_moisture_max":null,"dest_broken_max":null,"dest_aflatoxin_max":null}',
-    'Use the import duty that applies today (including any stay of application), and per-container figures for one 20 ft container. other_levies_pct must only include non-recoverable levies (not VAT, not withholding or advance income tax). india_fob_usd_per_mt_typical is the current typical FOB price from Indian ports for this exact product and grade. pre_shipment_inspection_required is true or false; transit days are numbers or ranges like "16-20".'
+    '{"origin_costs_inr":[{"item":"<exact cost item name from the list>","rate":null}],"india_fob_usd_per_mt_typical":null,"marine_insurance_pct_of_cfr":null,"pre_shipment_inspection_required":null,"pre_shipment_inspection_name":null,"overland_corridor":null,"sea_transit_days":null,"overland_transit_days":null,"ocean_freight_usd_per_20ft":null,"carrier_local_usd_per_20ft":null,"dest_port_usd_per_20ft":null,"dest_lolo_usd_per_20ft":null,"inland_trucking_usd_per_20ft":null,"transit_bond_usd_per_20ft":null,"import_duty_pct":null,"other_levies_pct":null,"import_clearing_usd_per_20ft":null,"import_vat_pct":null,"local_currency":null,"local_per_usd":null,"wholesale_local_per_kg_low":null,"wholesale_local_per_kg_high":null,"semi_wholesale_local_per_kg_low":null,"semi_wholesale_local_per_kg_high":null,"retail_local_per_kg_low":null,"retail_local_per_kg_high":null,"dest_standard":null,"dest_moisture_max":null,"dest_broken_max":null,"dest_aflatoxin_max":null}',
+    'Use the import duty that applies today (including any stay of application), and per-container figures for one 20 ft container. other_levies_pct must only include non-recoverable levies (not VAT, not withholding or advance income tax). india_fob_usd_per_mt_typical is the current typical FOB price from Indian ports for this exact product and grade. pre_shipment_inspection_required is true or false; transit days are numbers or ranges like "16-20". origin_costs_inr has one entry per origin cost item listed above, with the item name copied exactly and the INR rate per its unit.'
   ].join('\n');
 }
 
