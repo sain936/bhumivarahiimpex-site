@@ -1040,7 +1040,7 @@ function sensitivity_(ccIn, V, minMargin, minBuyer) {
     run('Origin logistics +10%', { rates: scale(1.1) })]
     .concat(fr ? [run('Ocean freight +20%', null, { b_freight: fr * 1.2 }), run('Ocean freight -20%', null, { b_freight: fr * 0.8 })] : []);
   const full = base.containers * (Number(ccIn.containerMt) || 25);
-  if (mt < full * 0.9) rows.push(run('Full container load (' + full + ' MT)', { mt: full }));
+  if (mt < full * 0.9) rows.push(Object.assign(run('Full container load (' + full + ' MT)', { mt: full }), { heldMarginPct: null }));
   const breakEven = r2(base.cost / fx / mt);
   const minFob = r2((base.cost + cargo * (Number(minMargin) || 0) / 100) / fx / mt);
   let buyerMax = null;
@@ -1684,7 +1684,7 @@ function costingRow_(sheet, row, cfg, inp) {
     ['Customs house agent', val('cha')], ['CFS facility', val('cfs_facility')],
     ['Port of loading', pol], ['Shipping line', val('shipping_line')],
     ['Discharge / transit port', pod + (finalDest ? ' (transit)' : '')],
-    ['Final destination', finalDest ? finalDest + ', ' + country + (val('corridor') ? ' via ' + val('corridor') : '') : country],
+    ['Final destination', finalDest ? finalDest + ', ' + country + (val('corridor') ? ' via ' + val('corridor') : '') : (pod ? pod + ', ' : '') + country + ' (delivered at the port, no inland leg)'],
     ['Transit status', val('transit_regime')], ['Destination inspection', val('dest_inspection')],
     ['Shipment window', val('shipment_window')],
   ]);
@@ -1789,7 +1789,7 @@ function costingRow_(sheet, row, cfg, inp) {
   sub('What-if sensitivity');
   para('How the numbers move if a cost changes after we quote. "Margin if price held" is our margin when the FOB already quoted to the buyer cannot be changed.', { size: 8.5, color: GREY });
   table([['Scenario', 'Our FOB (re-priced) / MT', 'Our margin if price held', 'Buyer landed / MT', 'Buyer return']].concat(sens.rows.map(r => [r.name, usd(r.fobPerMt),
-    r.heldMarginPct.toFixed(2) + '%', r.buyerLandedPerMt == null ? '-' : usd(r.buyerLandedPerMt), r.buyerRoi == null ? '-' : r.buyerRoi.toFixed(2) + '%'])),
+    r.heldMarginPct == null ? 'n/a (re-priced)' : r.heldMarginPct.toFixed(2) + '%', r.buyerLandedPerMt == null ? '-' : usd(r.buyerLandedPerMt), r.buyerRoi == null ? '-' : r.buyerRoi.toFixed(2) + '%'])),
     { widths: [150, 95, 90, 95, 80], bold: [1] });
   kv([['Our break-even FOB (zero margin)', usd(sens.breakEven) + ' / MT'], ['Our lowest FOB for a GO margin (' + minMarginS + '%)', usd(sens.minFob) + ' / MT'],
     ['Highest FOB the buyer can pay and keep ' + minBuyerS + '%', sens.buyerMax == null ? 'Needs the buyer selling price or market prices' : sens.buyerMax <= 0 ? 'None: even at FOB USD 0 the buyer cannot make ' + minBuyerS + '%' : usd(sens.buyerMax) + ' / MT'],
@@ -1888,6 +1888,9 @@ function costingRow_(sheet, row, cfg, inp) {
   table([['Requirement', 'Agency', 'What it involves']]
     .concat(val('dest_inspection') ? [[val('dest_inspection'), 'Destination standards body / appointed agency', 'Pre-export verification against ' + (val('q_dest_std') || 'the destination standard') + '; lab tests for moisture, heavy metals and aflatoxin']] : [])
     .concat(val('import_permit') || country ? [['Import declaration / permit', country + ' customs / regulator', val('import_permit') || 'Buyer files before shipment']] : [])
+    .concat(fig.importer_registration ? [['Importer registration' + AI, country + ' authorities', String(fig.importer_registration)]] : [])
+    .concat(fig.labelling_rule ? [['Labelling' + AI, country + ' standards body', String(fig.labelling_rule)]] : [])
+    .concat(fig.phyto_fumigation_rule ? [['Phyto / fumigation' + AI, country + ' plant health authority', String(fig.phyto_fumigation_rule)]] : [])
     .concat(finalDest ? [['Transit clause on B/L', pod.split(',').slice(-1)[0].trim() + ' customs', 'B/L must state "Cargo in transit to ' + finalDest + ', ' + country + ' on account and risk of consignee" so no transit-country import tax applies'],
                          ['Bonded overland transit', val('transit_regime') || 'Regional customs transit', 'Transit bond and cargo tracking seals from ' + pod + ' to ' + finalDest]] : []),
     { widths: [150, 150, 210] });
@@ -1911,11 +1914,13 @@ function costingRow_(sheet, row, cfg, inp) {
     ['Stage 2 (Days ' + or('t_procure', '2-3') + ')', 'Procurement & haulage', '1. Bind pre-FOB inland insurance.\n2. Inspector checks moisture' + (val('q_moisture') ? ' (< ' + val('q_moisture') + ')' : '') + ' and quality at ' + (val('mill_location') || 'the mill') + '.\n3. Order ' + c.bags + ' bags; dispatch to ' + (val('cfs_facility') || 'the CFS') + '.\n4. Dispatch at least 5-6 days before port cut-off.'],
     ['Stage 3 (' + or('t_cfs', '2') + ' days)', 'CFS receiving & stuffing', '1. Unload and verify quality and weight.\n2. Rebag and double-stitch.\n3. Line the container, add desiccant.' + (val('dest_inspection') ? '\n4. Agency draws samples for ' + val('dest_inspection') + '.' : '') + '\n5. Stuff and fumigate under gas seal.'],
     ['Stage 4 (' + or('t_cha', '2') + ' days)', 'CHA customs clearance', '1. CHA files the shipping bill on ICEGATE.\n2. Customs inspection; LEO granted.\n3. Phyto and COO issued.\n4. VGM weighment.'],
-    ['Stage 5 (ready in ' + or('t_ready', '7-10') + ' days)', 'Terminal drayage & loading', '1. Move container to ' + pol + '.\n2. Settle THC.\n3. Load on the nominated vessel.\n4. Risk passes to the buyer under FOB.'],
+    ['Stage 5 (ready in ' + or('t_ready', '7-10') + ' days)', 'Terminal drayage & loading', '1. Move container to ' + pol + '.\n2. Settle THC.\n3. Load on the nominated vessel.\n4. Risk passes to the buyer once loaded on board (' + buyerTerm + ').'],
     ['Stage 6 (post-loading)', 'Document release & settlement', '1. Carrier issues on-board B/L' + (finalDest ? ' with transit clause' : '') + '.\n2. Send document scans.\n3. Buyer pays balance within ' + or('balance_days', 3) + ' business days.\n4. Release originals or telex release.\n5. Close EDPMS and generate e-BRC.'],
     ['Stage 7 (destination)', 'Buyer scope', '1. Vessel arrives at ' + pod + (val('t_sea') ? ' (about ' + val('t_sea') + ' days)' : '') + '.' + (finalDest ? '\n2. Buyer\'s agent files transit bond' + (val('transit_regime') ? ' (' + val('transit_regime') + ')' : '') + '.\n3. Overland to ' + finalDest + (val('corridor') ? ' via ' + val('corridor') : '') + (val('t_inland') ? ' (about ' + val('t_inland') + ' days)' : '') + '.\n4. Import clearance at ' + finalDest + '.' : '\n2. Import clearance and delivery.')],
   ]), { widths: [95, 115, 300] });
-  para('TRANSFER OF RISK: under FOB, risk passes to the buyer once the container is loaded on board at ' + pol + '. Pre-FOB inland transit is covered by our insurance. The buyer must insure the ocean ' + (finalDest ? 'and overland ' : '') + 'leg' + (finalDest ? 's to ' + finalDest : '') + '.', { size: 9, bold: true, color: GOLD });
+  para('TRANSFER OF RISK: under ' + buyerTerm + ', risk passes to the buyer once the container is loaded on board at ' + pol + '. Pre-FOB inland transit is covered by our insurance. ' +
+    (buyerTerm === 'CIF' ? 'We pay ocean freight and insure the ocean leg to ' + pod + ' for the buyer\'s benefit (minimum cover, 110% of CIF)' + (finalDest ? '; the buyer insures the overland leg to ' + finalDest : '') + '.'
+      : (buyerTerm === 'CFR' ? 'We pay ocean freight to ' + pod + ', but the buyer bears the sea risk and must insure the ocean ' : 'The buyer must insure the ocean ') + (finalDest ? 'and overland ' : '') + 'leg' + (finalDest ? 's to ' + finalDest : '') + '.'), { size: 9, bold: true, color: GOLD });
 
   // ---------- 14. Audit checklist ----------
   H('Mandatory pre-issuance & execution audit checklist');
@@ -2150,8 +2155,8 @@ function researchPrompt_(p, c, o) {
     'If you cannot find a reliable figure, write "Not found, check with CHA / buyer" instead of guessing. Do not invent licences or certifications for Bhumi Varahi Impex. Keep the whole answer under 800 words.',
     '',
     'At the very end, add a fenced ```json block with your best current figures as plain numbers (null when not found), using exactly these keys:',
-    '{"india_mill_price_inr_per_100kg_typical":null,"origin_costs_inr":[{"item":"<exact cost item name from the list>","rate":null}],"india_fob_usd_per_mt_typical":null,"marine_insurance_pct_of_cfr":null,"pre_shipment_inspection_required":null,"pre_shipment_inspection_name":null,"overland_corridor":null,"sea_transit_days":null,"overland_transit_days":null,"ocean_freight_usd_per_20ft":null,"carrier_local_usd_per_20ft":null,"dest_port_usd_per_20ft":null,"dest_lolo_usd_per_20ft":null,"inland_trucking_usd_per_20ft":null,"transit_bond_usd_per_20ft":null,"import_duty_pct":null,"other_levies_pct":null,"import_clearing_usd_per_20ft":null,"import_vat_pct":null,"local_currency":null,"local_per_usd":null,"wholesale_local_per_kg_low":null,"wholesale_local_per_kg_high":null,"semi_wholesale_local_per_kg_low":null,"semi_wholesale_local_per_kg_high":null,"retail_local_per_kg_low":null,"retail_local_per_kg_high":null,"dest_standard":null,"dest_moisture_max":null,"dest_broken_max":null,"dest_aflatoxin_max":null}',
-    'Use the import duty that applies today (including any stay of application), and per-container figures for one 20 ft container. other_levies_pct must only include non-recoverable levies (not VAT, not withholding or advance income tax). india_mill_price_inr_per_100kg_typical is the current typical ex-mill price in India for this exact product and grade, in INR per 100 kg (quintal). india_fob_usd_per_mt_typical is the current typical FOB price from Indian ports for this exact product and grade. pre_shipment_inspection_required is true or false; transit days are numbers or ranges like "16-20". origin_costs_inr has one entry per origin cost item listed above, with the item name copied exactly (without the "(per ...)" part) and the INR rate per its unit.'
+    '{"importer_registration":null,"labelling_rule":null,"phyto_fumigation_rule":null,"india_mill_price_inr_per_100kg_typical":null,"origin_costs_inr":[{"item":"<exact cost item name from the list>","rate":null}],"india_fob_usd_per_mt_typical":null,"marine_insurance_pct_of_cfr":null,"pre_shipment_inspection_required":null,"pre_shipment_inspection_name":null,"overland_corridor":null,"sea_transit_days":null,"overland_transit_days":null,"ocean_freight_usd_per_20ft":null,"carrier_local_usd_per_20ft":null,"dest_port_usd_per_20ft":null,"dest_lolo_usd_per_20ft":null,"inland_trucking_usd_per_20ft":null,"transit_bond_usd_per_20ft":null,"import_duty_pct":null,"other_levies_pct":null,"import_clearing_usd_per_20ft":null,"import_vat_pct":null,"local_currency":null,"local_per_usd":null,"wholesale_local_per_kg_low":null,"wholesale_local_per_kg_high":null,"semi_wholesale_local_per_kg_low":null,"semi_wholesale_local_per_kg_high":null,"retail_local_per_kg_low":null,"retail_local_per_kg_high":null,"dest_standard":null,"dest_moisture_max":null,"dest_broken_max":null,"dest_aflatoxin_max":null}',
+    'Use the import duty that applies today (including any stay of application), and per-container figures for one 20 ft container. other_levies_pct must only include non-recoverable levies (not VAT, not withholding or advance income tax). importer_registration, labelling_rule and phyto_fumigation_rule are one short sentence each on what the destination requires (null if nothing specific). india_mill_price_inr_per_100kg_typical is the current typical ex-mill price in India for this exact product and grade, in INR per 100 kg (quintal). india_fob_usd_per_mt_typical is the current typical FOB price from Indian ports for this exact product and grade. pre_shipment_inspection_required is true or false; transit days are numbers or ranges like "16-20". origin_costs_inr has one entry per origin cost item listed above, with the item name copied exactly (without the "(per ...)" part) and the INR rate per its unit.'
   ].join('\n');
 }
 
