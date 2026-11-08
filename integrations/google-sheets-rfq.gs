@@ -501,6 +501,7 @@ function onOpen() {
     .addItem('Resend buyer email (selected row)', 'resendAcknowledgement')
     .addItem('Prepare internal costing inputs (selected row)', 'prepareCostingInputs')
     .addItem('Create internal costing (selected row or IC tab)', 'createInternalCosting')
+    .addItem('Draft logistics quote requests (selected row or IC tab)', 'draftQuoteRequests')
     .addItem('Set Gemini API key (for costing research)', 'setGeminiKey')
     .addItem('Create quotation PDF (selected row)', 'createQuotation')
     .addItem('Send today\'s follow-ups now', 'dailyDigest')
@@ -722,6 +723,7 @@ const QUOTE_LOG_TAB = 'Logistics Quote Log';
 // Destination-side inputs that take logistics quotes (USD per 20 ft container), with their Gemini keys.
 const QUOTE_FIELDS = { b_freight: 'ocean_freight_usd_per_20ft', b_local: 'carrier_local_usd_per_20ft', b_port: 'dest_port_usd_per_20ft',
   b_lolo: 'dest_lolo_usd_per_20ft', b_inland: 'inland_trucking_usd_per_20ft', b_bond: 'transit_bond_usd_per_20ft', b_clear: 'import_clearing_usd_per_20ft' };
+const VENDOR_TAB = 'Logistics Vendors';
 const QUOTE_HEAD = ['Quote A (vendor: amount)', 'Quote B (vendor: amount)', 'Web estimate (Gemini, filled on each run)'];
 const COST_SETTINGS_DEFAULT = [
   ['USD rate (INR per 1 USD)', 94.85],
@@ -737,6 +739,7 @@ const COST_SETTINGS_DEFAULT = [
   ['Quotation validity (days)', 7],
   ['Minimum margin for GO (%)', 8],
   ['Minimum buyer return for GO (%)', 8],
+  ['Logistics quotes valid for (days)', 30],
   ['Gemini research (Y/N)', 'Y'],
   ['Gemini model', 'gemini-3.8-flash'],
   // Bank details: printed on the internal costing only when filled in.
@@ -1015,6 +1018,40 @@ function computeBuyer_(fobUsd, mt, containers, b) {
   return out;
 }
 
+// What-if table and price limits. Pure: ccIn is the computeCosting_ input, V the buyer-side inputs.
+// Returns { rows: [{name, fobPerMt, heldMarginPct, buyerLandedPerMt, buyerRoi}], breakEven, minFob, buyerMax }.
+function sensitivity_(ccIn, V, minMargin, minBuyer) {
+  const r2 = n => Math.round(n * 100) / 100;
+  const base = computeCosting_(ccIn);
+  const mt = Number(ccIn.mt), cargo = base.lines[0].inr;
+  const run = (name, cc, b) => {
+    const c = computeCosting_(Object.assign({}, ccIn, cc || {}));
+    const B = computeBuyer_(c.fobUsd, mt, c.containers, Object.assign({}, V, b || {}));
+    const held = base.fobUsd * Number((cc && cc.fx) || ccIn.fx) - c.cost;
+    return { name: name, fobPerMt: c.fobUsdPerMt, heldMarginPct: r2(held / c.lines[0].inr * 100),
+             buyerLandedPerMt: B ? B.landedPerMt : null, buyerRoi: B && B.sell ? B.roi : null };
+  };
+  const fx = Number(ccIn.fx), mill = Number(ccIn.millPer100kg), fr = num_(V.b_freight);
+  const scale = k => (ccIn.rates || []).map(x => Object.assign({}, x, { rate: x.rate == null ? null : x.rate * k }));
+  const rows = [run('Base case (this costing)'),
+    run('Mill price +10%', { millPer100kg: mill * 1.1 }), run('Mill price -10%', { millPer100kg: mill * 0.9 }),
+    run('Rupee 2% stronger (INR ' + r2(fx * 0.98) + ' / USD)', { fx: fx * 0.98 }), run('Rupee 2% weaker (INR ' + r2(fx * 1.02) + ' / USD)', { fx: fx * 1.02 }),
+    run('Origin logistics +10%', { rates: scale(1.1) })]
+    .concat(fr ? [run('Ocean freight +20%', null, { b_freight: fr * 1.2 }), run('Ocean freight -20%', null, { b_freight: fr * 0.8 })] : []);
+  const breakEven = r2(base.cost / fx / mt);
+  const minFob = r2((base.cost + cargo * (Number(minMargin) || 0) / 100) / fx / mt);
+  let buyerMax = null;
+  const roiAt = f => { const B = computeBuyer_(f * mt, mt, base.containers, V); return B && B.sell ? B.roi : null; };
+  if (roiAt(base.fobUsdPerMt) != null) {
+    let lo = 0, hi = Math.max(base.fobUsdPerMt * 5, 1);
+    if (roiAt(lo) >= minBuyer) {
+      for (let i = 0; i < 50; i++) { const m = (lo + hi) / 2; if (roiAt(m) >= minBuyer) lo = m; else hi = m; }
+      buyerMax = r2(lo);
+    } else buyerMax = 0;
+  }
+  return { rows: rows, breakEven: breakEven, minFob: minFob, buyerMax: buyerMax };
+}
+
 // Defaults for a new input tab: RFQ answers first, then Cost Settings, then the sample dossier's terms.
 function icDefaults_(p, S) {
   const rice = /rice/i.test(p.commodity);
@@ -1077,6 +1114,16 @@ function icSheet_(p, cfg, create) {
   rows.push(['#', '11. Cost lines for this deal (copied from "' + COST_RATES_TAB + '"; edit rates or Include for this deal only. Put CHA / CFS / transporter quotes in columns H and I, e.g. "Sea Hawk CHA: 2400")', '', '']);
   rows.push(['__lines__', 'Cost item', 'Rate (INR)', 'Per (MT / bag / container / shipment)', 'GST (Y/N)', 'Include (Y/N)', 'Basis'].concat(QUOTE_HEAD));
   cfg.rates.forEach(x => rows.push(['line', x.item, x.rate == null ? '' : x.rate, x.per, x.gst ? 'Y' : 'N', x.include ? 'Y' : 'N', x.basis]));
+  // Pre-fill quotes from earlier deals on the same route (Logistics Quote Log).
+  const past = pastQuotes_(String(d.pol || ''), [d.pod, d.final_dest].filter(Boolean).join(' -> ') + (d.buyer_country ? ', ' + d.buyer_country : ''));
+  let prefilled = 0;
+  rows.forEach(r => {
+    const qs = past[r[0] === 'line' ? r[1] : QUOTE_FIELDS[r[0]] ? quoteLabel_(r[0]) : ''];
+    if (!qs) return;
+    while (r.length < 7) r.push('');
+    r[7] = quoteCell_(qs[0]); r[8] = qs[1] ? quoteCell_(qs[1]) : '';
+    prefilled++;
+  });
   const width = 10;
   sh.getRange(1, 3, rows.length + 200, 1).setNumberFormat('@');
   sh.getRange(1, 1, rows.length, width).setValues(rows.map(r => r.concat(Array(width - r.length).fill(''))));
@@ -1089,7 +1136,7 @@ function icSheet_(p, cfg, create) {
   });
   sh.setColumnWidth(2, 330); sh.setColumnWidth(3, 300); sh.setColumnWidth(4, 360); sh.setColumnWidths(5, 3, 110); sh.setColumnWidths(8, 3, 190);
   sh.hideColumns(1); sh.setFrozenRows(1);
-  return { sheet: sh, created: true };
+  return { sheet: sh, created: true, prefilled: prefilled };
 }
 
 // Sheets turns "13.5%" into 0.135 and "2-3" into a date; turn them back into what was typed.
@@ -1111,12 +1158,42 @@ function icQuoteCols_(sh) {
 function parseQuote_(x) {
   if (x === '' || x == null) return null;
   if (typeof x === 'number') return isFinite(x) ? { vendor: '', amt: x } : null;
-  const s = String(x).trim(), nums = s.match(/\d[\d,]*(?:\.\d+)?/g);
+  let s = String(x).trim(), date = '';
+  const dm = s.match(/\s*\(([^)]*\d{4}[^)]*)\)\s*$/);
+  if (dm) { date = dm[1].trim(); s = s.slice(0, dm.index).trim(); }
+  const nums = s.match(/\d[\d,]*(?:\.\d+)?/g);
   if (!nums) return null;
   const last = nums[nums.length - 1];
   const vendor = s.slice(0, s.lastIndexOf(last)).replace(/\s*(INR|USD|Rs\.?|₹|\$)\s*$/i, '').replace(/[\s:\-–=@]+$/, '').trim();
-  return { vendor: vendor, amt: Number(last.replace(/,/g, '')) };
+  const q = { vendor: vendor, amt: Number(last.replace(/,/g, '')) };
+  if (date) q.date = date;
+  return q;
 }
+// Short label used for a destination charge in the comparison and the Quote Log.
+function quoteLabel_(k) { return (IC_FIELDS.find(f => f[0] === k) || [k, k])[1].replace(/ per container \(USD\)$/, ''); }
+
+// Latest written quotes (up to 2 vendors per cost item) from the Quote Log for this route.
+// Origin items match on the port of loading; destination charges match on port + final destination + country.
+function pastQuotes_(pol, destRoute) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(QUOTE_LOG_TAB);
+  const out = {};
+  if (!sh || sh.getLastRow() < 2) return out;
+  const rows = sh.getRange(2, 1, sh.getLastRow() - 1, 10).getValues();
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i];
+    if (r[6] !== 'Written quote' || num_(r[8]) == null) continue;
+    const parts = String(r[3]).split(' -> ');
+    const match = /^INR/.test(String(r[5])) ? parts[0] === pol : parts.slice(1).join(' -> ') === destRoute;
+    if (!match) continue;
+    const list = out[r[4]] = out[r[4]] || [];
+    if (list.length < 2 && !list.some(q => q.vendor === String(r[7]))) {
+      list.push({ vendor: String(r[7]), amt: num_(r[8]), date: isDate_(r[0]) ? Utilities.formatDate(r[0], 'Asia/Kolkata', 'dd MMM yyyy') : String(r[0]) });
+    }
+  }
+  return out;
+}
+const quoteCell_ = q => (q.vendor ? q.vendor + ': ' : '') + q.amt + (q.date ? ' (' + q.date + ')' : '');
+
 const lowest_ = qs => qs.slice().sort((a, b) => a.amt - b.amt)[0] || null;
 
 // Reads the input tab into { v: {key: value}, lines: [...], missing: [labels], quotes: {key: [..]}, src: {key: 'quote'} }.
@@ -1162,7 +1239,8 @@ function prepareCostingInputs() {
   const ic = icSheet_(p, setupCosting_(), true);
   ic.sheet.activate();
   ui.alert(ic.created
-    ? 'Tab "' + ic.sheet.getName() + '" is ready, filled with what the RFQ and your defaults already say.\n\nCheck every value, fill the yellow (required) cells and anything else you know, then choose Bhumi Varahi -> Create internal costing.'
+    ? 'Tab "' + ic.sheet.getName() + '" is ready, filled with what the RFQ and your defaults already say.' +
+      (ic.prefilled ? ' ' + ic.prefilled + ' line(s) have quotes from earlier deals on this route (columns H and I).' : '') + '\n\nCheck every value, fill the yellow (required) cells and anything else you know, then choose Bhumi Varahi -> Create internal costing.'
     : 'Opened the existing input tab "' + ic.sheet.getName() + '".');
   if (!ic.created) icQuoteCols_(ic.sheet);
 }
@@ -1184,7 +1262,9 @@ function createInternalCosting() {
   const ic = icSheet_(p, cfg, true);
   if (ic.created) {
     ic.sheet.activate();
-    ui.alert('First, the inputs. Tab "' + ic.sheet.getName() + '" is ready with what we already know.\n\nCheck it, fill the yellow cells, then run Create internal costing again.');
+    ui.alert('First, the inputs. Tab "' + ic.sheet.getName() + '" is ready with what we already know.' +
+      (ic.prefilled ? '\n\n' + ic.prefilled + ' line(s) have quotes from earlier deals on this route in columns H and I, with their dates. Replace them with fresh quotes where you can.' : '') +
+      '\n\nCheck it, fill the yellow cells, then run Create internal costing again.');
     return;
   }
   icQuoteCols_(ic.sheet);
@@ -1205,10 +1285,13 @@ function writeWebEstimates_(sh, web) {
 
 // Compares each cost line with its written quotes and the web estimate. Pure.
 // items: [{ label, unit, used, src ('entered' | 'quote' | 'AI'), quotes: [{vendor, amt}], web }]
-function compareQuotes_(items) {
+function compareQuotes_(items, opts) {
+  opts = opts || {};
+  const ageDays = q => { const t = q.date ? Date.parse(q.date) : NaN; return isNaN(t) || !opts.now ? null : Math.floor((opts.now - t) / 864e5); };
   return items.map(x => {
     const low = lowest_(x.quotes || []), notes = [];
     let flag = 'ok';
+    const old = opts.validDays ? (x.quotes || []).filter(q => ageDays(q) > opts.validDays) : [];
     if (low && x.used != null && x.used > low.amt * 1.1) {
       flag = 'high';
       notes.push(Math.round((x.used / low.amt - 1) * 100) + '% above the lowest quote' + (low.vendor ? ' (' + low.vendor + ')' : ''));
@@ -1219,7 +1302,8 @@ function compareQuotes_(items) {
     }
     if (!(x.quotes || []).length) { if (flag === 'ok') flag = x.src === 'AI' ? 'aionly' : 'noquote'; notes.push(x.src === 'AI' ? 'Web estimate only: get a written quote' : 'No written quote entered'); }
     else if (flag === 'ok') notes.push(x.used <= low.amt ? 'Lowest quote used' : 'Within 10% of the lowest quote');
-    return Object.assign({}, x, { low: low, flag: flag, note: notes.join('. ') });
+    if (old.length) { notes.push('Quote' + (old.length > 1 ? 's' : '') + ' from ' + old.map(q => q.date).join(', ') + ' older than ' + opts.validDays + ' days: re-confirm'); }
+    return Object.assign({}, x, { low: low, flag: flag, stale: old.length > 0, note: notes.join('. ') });
   });
 }
 
@@ -1293,12 +1377,20 @@ function decide_(o) {
   // 8. Destination inspection
   if (o.inspectionNeeded && !o.inspectionCosted) add('Destination inspection', 'STOP', o.inspection + (o.inspectionAi ? ' (AI est.)' : '') + ' is required but its cost is not in the costing. Set the PVoC / CoC cost line to Include = Y (or enter the agency quote).');
   else if (o.inspectionNeeded) add('Destination inspection', 'GO', o.inspection + ' costed');
+  // 8a. Room between our minimum price and the most the buyer can pay
+  if (o.priceRoom) {
+    const R = o.priceRoom, f = n => 'USD ' + n.toFixed(2);
+    add('Negotiation room', R.buyerMax >= R.minFob ? 'GO' : 'WATCH', R.buyerMax >= R.minFob
+      ? 'Any FOB from ' + f(R.minFob) + ' (our ' + R.minMargin + '% margin) to ' + f(R.buyerMax) + ' / MT (buyer keeps ' + R.minBuyer + '%) works for both sides'
+      : 'No price works for both sides: we need at least ' + f(R.minFob) + ' / MT, the buyer can pay at most ' + f(R.buyerMax) + ' / MT to keep ' + R.minBuyer + '%');
+  }
   // 8b. Logistics rates against quotes and web estimates
   if (o.logistics) {
     const L = o.logistics, bits = [];
     if (L.high.length) bits.push('Costed above the lowest quote: ' + L.high.join(', '));
     if (L.web.length) bits.push('Far from the web estimate: ' + L.web.join(', '));
     if (L.aiOnly.length) bits.push('Web estimate only, no written quote: ' + L.aiOnly.join(', '));
+    if ((L.stale || []).length) bits.push('Quotes to re-confirm (older than ' + L.validDays + ' days): ' + L.stale.join(', '));
     if (bits.length || L.quoted) add('Logistics quotes', bits.length ? 'WATCH' : 'GO', bits.length ? bits.join('. ') : L.quoted + ' cost line(s) match the written quotes');
   }
   // 9. Buyer documents
@@ -1314,9 +1406,10 @@ function costingRow_(sheet, row, cfg, inp) {
   const V = Object.assign({}, inp.v), S = cfg.settings;
   const val = k => (V[k] === '' || V[k] == null) ? '' : String(V[k]);
   const mt = num_(V.qty_mt), fx = num_(V.fx), bagKg = num_(V.bag_kg), marginPct = num_(V.margin_pct) || 0;
-  const c = computeCosting_({ fx: fx, mt: mt, bagKg: bagKg, containerMt: num_(V.mt_per_ctr), millPer100kg: num_(V.mill_price),
+  const ccIn = { fx: fx, mt: mt, bagKg: bagKg, containerMt: num_(V.mt_per_ctr), millPer100kg: num_(V.mill_price),
     commodity: [val('commodity'), val('variety')].filter(Boolean).join(', '), mill: [val('mill_name'), val('mill_location')].filter(Boolean).join(', '),
-    rates: inp.lines, marginPct: marginPct, gstPct: num_(V.gst_pct) });
+    rates: inp.lines, marginPct: marginPct, gstPct: num_(V.gst_pct) };
+  const c = computeCosting_(ccIn);
   const pol = val('pol'), pod = val('pod'), finalDest = val('final_dest'), country = val('buyer_country');
   const year = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy');
 
@@ -1339,16 +1432,18 @@ function costingRow_(sheet, row, cfg, inp) {
     const m = e && num_(e.rate) != null && inp.lines.find(l => l.item.toLowerCase() === String(e.item || '').toLowerCase().trim());
     if (m) webLine[m.item] = num_(e.rate);
   });
-  const fieldLabel = k => (IC_FIELDS.find(f => f[0] === k) || [k, k])[1].replace(/ per container \(USD\)$/, '');
+  const fieldLabel = quoteLabel_;
+  const qOpts = { now: Date.now(), validDays: num_(setting_(S, 'Logistics quotes valid for (days)', 30)) || 30 };
   const originQ = compareQuotes_(inp.lines.filter(l => l.include).map(l => ({ label: l.item, unit: 'INR / ' + l.per, used: l.rate,
-    src: l.fromQuote ? 'quote' : 'entered', quotes: l.quotes || [], web: webLine[l.item] })));
+    src: l.fromQuote ? 'quote' : 'entered', quotes: l.quotes || [], web: webLine[l.item] })), qOpts);
   const destQ = compareQuotes_(Object.keys(QUOTE_FIELDS).map(k => ({ key: k, label: fieldLabel(k), unit: 'USD / container', used: num_(V[k]),
     src: (inp.src || {})[k] === 'quote' ? 'quote' : isAi(k) ? 'AI' : 'entered', quotes: (inp.quotes || {})[k] || [], web: webField[k] }))
-    .filter(x => x.used || x.quotes.length || x.web != null));
+    .filter(x => x.used || x.quotes.length || x.web != null), qOpts);
   const allQ = originQ.concat(destQ);
   const logistics = allQ.some(x => x.quotes.length || x.web != null) ? {
     high: allQ.filter(x => x.flag === 'high').map(x => x.label), web: allQ.filter(x => x.flag === 'web').map(x => x.label),
-    aiOnly: destQ.filter(x => x.flag === 'aionly' && x.used).map(x => x.label), quoted: allQ.filter(x => x.quotes.length).length } : null;
+    aiOnly: destQ.filter(x => x.flag === 'aionly' && x.used).map(x => x.label), quoted: allQ.filter(x => x.quotes.length).length,
+    stale: allQ.filter(x => x.stale).map(x => x.label), validDays: qOpts.validDays } : null;
 
   // Market prices (local per kg) -> USD per MT
   const lfx = num_(V.local_fx), ccy = val('local_ccy') || 'local';
@@ -1381,6 +1476,8 @@ function costingRow_(sheet, row, cfg, inp) {
   const target = num_(p.price);
   const marginAtTarget = target ? (target * mt * fx - c.cost) / cargoInr * 100 : null;
   const inspectionCosted = c.lines.some(l => /PVoC|CoC|inspection/i.test(l.item));
+  const minMarginS = num_(setting_(S, 'Minimum margin for GO (%)', 8)), minBuyerS = num_(setting_(S, 'Minimum buyer return for GO (%)', 8));
+  const sens = sensitivity_(ccIn, V, minMarginS, minBuyerS);
   const decision = decide_({
     marginPct: marginPct, minMargin: num_(setting_(S, 'Minimum margin for GO (%)', 8)), marginUsd: 'USD ' + c.marginUsd.toFixed(2),
     target: target, fobPerMt: c.fobUsdPerMt, marginAtTarget: marginAtTarget, payment: val('payment_option'), licencesPending: notActive,
@@ -1389,6 +1486,7 @@ function costingRow_(sheet, row, cfg, inp) {
     millDefault: num_(V.mill_price) === num_(setting_(S, 'Default mill price (INR per 100 kg)', '')), millPrice: num_(V.mill_price),
     inspectionNeeded: !!val('dest_inspection'), inspectionCosted: inspectionCosted, inspection: val('dest_inspection'), inspectionAi: isAi('dest_inspection'),
     fobBenchmark: num_(V.fob_benchmark), benchAi: isAi('fob_benchmark'), logistics: logistics,
+    priceRoom: sens.buyerMax != null ? { minFob: sens.minFob, buyerMax: sens.buyerMax, minMargin: minMarginS, minBuyer: minBuyerS } : null,
     buyerPending: buyerNeeds.filter(b => !b[1]).length });
 
   const grp = n => Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -1516,7 +1614,7 @@ function costingRow_(sheet, row, cfg, inp) {
   para('Statutory GST of ' + (num_(V.gst_pct) || 18) + '% applies to taxable CFS / CHA services and is claimable as export input credit. CTO / SRF and demurrage are charged at actuals when they occur.', { size: 8.5, color: GREY });
   sub('Logistics quote comparison');
   para('Logistics rates change with the destination, carrier and season. Each rate used here is set against the written quotes in the input tab (columns H and I) and Gemini\'s web estimate (column J). Web estimates are a guide only; book on written quotes.', { size: 8.5, color: GREY });
-  const qv = (q, cur) => q ? (q.vendor ? q.vendor + ': ' : '') + cur + ' ' + grp(q.amt) : '-';
+  const qv = (q, cur) => q ? (q.vendor ? q.vendor + ': ' : '') + cur + ' ' + grp(q.amt) + (q.date ? '\n(' + q.date + ')' : '') : '-';
   const qTable = (list, cur) => table([['Cost item', 'Used in costing', 'Quote A', 'Quote B', 'Web estimate', 'Check']].concat(list.map(x => [
     x.label + ' (' + x.unit.replace(/^\w+ \/ /, 'per ') + ')', x.used == null ? '-' : cur + ' ' + grp(x.used) + (x.src === 'quote' ? ' (lowest quote)' : x.src === 'AI' ? AI : ''),
     qv(x.quotes[0], cur), qv(x.quotes[1], cur), x.web == null ? '-' : cur + ' ' + grp(x.web), x.note])), { widths: [125, 80, 80, 80, 70, 75] });
@@ -1578,6 +1676,15 @@ function costingRow_(sheet, row, cfg, inp) {
       ? 'After ocean freight, ' + (finalDest ? 'overland transit, ' : '') + 'duties and local charges, the buyer nets about ' + usd(B.profit / c.containers) + ' per container (' + B.roi + '% on landed cost). Our FOB offer of ' + usd(c.fobUsdPerMt) + ' / MT leaves the buyer a ' + (B.roi >= 15 ? 'strong' : B.roi >= 8 ? 'workable' : 'thin') + ' margin.'
       : 'At these figures the buyer loses ' + usd(-B.profit) + ' on the consignment. Expect strong price pressure or a cancelled order.'), { size: 9, bold: true, color: GOLD });
   } else para('Part B (buyer landed cost) skipped: no ocean freight entered and no AI figure available. Fill section 7 of the input tab.', { size: 9, color: GREY });
+
+  sub('What-if sensitivity');
+  para('How the numbers move if a cost changes after we quote. "Margin if price held" is our margin when the FOB already quoted to the buyer cannot be changed.', { size: 8.5, color: GREY });
+  table([['Scenario', 'Our FOB (re-priced) / MT', 'Our margin if price held', 'Buyer landed / MT', 'Buyer return']].concat(sens.rows.map(r => [r.name, usd(r.fobPerMt),
+    r.heldMarginPct.toFixed(2) + '%', r.buyerLandedPerMt == null ? '-' : usd(r.buyerLandedPerMt), r.buyerRoi == null ? '-' : r.buyerRoi.toFixed(2) + '%'])),
+    { widths: [150, 95, 90, 95, 80], bold: [1] });
+  kv([['Our break-even FOB (zero margin)', usd(sens.breakEven) + ' / MT'], ['Our lowest FOB for a GO margin (' + minMarginS + '%)', usd(sens.minFob) + ' / MT'],
+    ['Highest FOB the buyer can pay and keep ' + minBuyerS + '%', sens.buyerMax == null ? 'Needs the buyer selling price or market prices' : usd(sens.buyerMax) + ' / MT'],
+    ['Negotiation range', sens.buyerMax == null ? '-' : sens.buyerMax >= sens.minFob ? usd(sens.minFob) + ' to ' + usd(sens.buyerMax) + ' / MT' : 'None at these figures']]);
 
   // ---------- 6. Payment ----------
   H('Non-negotiable payment terms & zero-credit policy');
@@ -1773,12 +1880,107 @@ function costingRow_(sheet, row, cfg, inp) {
   };
 }
 
+// ===== LOGISTICS QUOTE REQUESTS (Gmail drafts, never sent automatically) =====
+function vendorSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(VENDOR_TAB);
+  if (!sh) {
+    sh = ss.insertSheet(VENDOR_TAB);
+    sh.getRange(1, 1, 1, 6).setValues([['Vendor', 'Type (Forwarder / Shipping line / CHA / CFS / Transporter / Clearing agent)', 'Email', 'Contact name', 'Ports / routes covered (blank = all; e.g. Visakhapatnam; Dar es Salaam)', 'Active (Y/N)']])
+      .setFontWeight('bold').setBackground('#1B4D3E').setFontColor('#FFFFFF');
+    sh.setColumnWidths(1, 6, 200); sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function vendorKind_(t) {
+  t = String(t || '').toLowerCase();
+  if (/clearing|destination|import agent/.test(t)) return 'agent';
+  if (/forward|shipping|line|nvocc|carrier/.test(t)) return 'forwarder';
+  if (/transport|truck|haul|lorry/.test(t)) return 'transporter';
+  if (/\bcha\b|cfs|custom/.test(t)) return 'cha';
+  return '';
+}
+
+// Which vendors cover this deal, and what each should quote. Pure.
+// d: { ref, commodity, variety, qty, containers, bags, bagKg, pol, pod, finalDest, country, millLocation, window, incoterm, payload, lines }
+function quoteRequests_(vendors, d) {
+  const out = [];
+  const near = (cov, places) => {
+    const toks = String(cov || '').toLowerCase().split(/[;,\n\/]+/).map(x => x.trim()).filter(x => x.length > 2);
+    if (!toks.length) return true;
+    const ps = places.filter(Boolean).map(x => String(x).toLowerCase());
+    return toks.some(t => ps.some(p => p.indexOf(t) >= 0 || t.indexOf(p) >= 0));
+  };
+  const transit = !!d.finalDest;
+  const origin = (d.lines || []).filter(l => l.include && !/jute|insurance|bank|inspection|pvoc|haulage/i.test(l.item));
+  vendors.forEach(v => {
+    const kind = vendorKind_(v.type);
+    if (!kind || !/@/.test(v.email) || /^n/i.test(String(v.active))) return;
+    const places = kind === 'cha' || kind === 'transporter' ? [d.pol] : kind === 'agent' ? [d.pod, d.finalDest, d.country] : [d.pol, d.pod, d.finalDest];
+    if (!near(v.cover, places)) return;
+    const items = kind === 'forwarder' ? [
+        'Ocean freight ' + d.pol + ' to ' + d.pod + ' (USD per 20 ft)', 'Carrier local charges: B/L, seal, ISPS (USD per 20 ft)', 'Origin THC at ' + d.pol + ' (INR per 20 ft)',
+        'Sea transit time and free days at ' + d.pod, 'Next sailings and rate validity'].concat(transit ? ['Through rate to ' + d.finalDest + ', if you offer it (USD per 20 ft)'] : [])
+      : kind === 'cha' ? origin.map(l => l.item + ' (INR per ' + l.per + ')')
+      : kind === 'transporter' ? ['Road haulage ' + (d.millLocation || 'mill') + ' to CFS at ' + d.pol + ' (INR per container load)', 'Loading / unloading charges, if extra', 'Transit time']
+      : ['Port / transit clearance at ' + d.pod + ' (USD per 20 ft)', 'Lo-Lo (lift on / lift off) at port, ICD or dry port (USD per 20 ft)']
+          .concat(transit ? ['Overland trucking ' + d.pod + ' to ' + d.finalDest + ' (USD per 20 ft)', 'Transit bond and cargo tracking (USD per 20 ft)'] : [])
+          .concat(['Import clearing and dry port handling at ' + (d.finalDest || d.pod) + ' (USD per 20 ft)', 'Current import duty, VAT and levies for HS ' + (d.hs || 'this product')]);
+    const route = d.pol + ', India to ' + d.pod + (transit ? ', then overland to ' + d.finalDest + ', ' + d.country + ' (transit)' : d.country ? ', ' + d.country : '');
+    const body = ['Dear ' + (v.contact || 'Sir / Madam') + ',', '',
+      'Please send us your best rates for this export shipment (our ref ' + d.ref + '):', '',
+      '- Cargo: ' + [d.commodity, d.variety].filter(Boolean).join(', ') + ', ' + d.qty + ' MT in ' + d.bags + ' x ' + d.bagKg + ' kg bags',
+      '- Containers: ' + d.containers + ' x 20 ft' + (d.payload ? ', payload ' + d.payload : ''),
+      '- Route: ' + route,
+      d.window ? '- Shipment window: ' + d.window : '',
+      d.incoterm ? '- Our sale term: ' + d.incoterm : '', '',
+      'Please quote:'].filter((x, i, a) => x !== '' || a[i - 1] !== '')
+      .concat(items.map((x, i) => (i + 1) + '. ' + x))
+      .concat(['', 'Please mention how long the rates are valid, the free days, and anything charged at actuals. A reply as "item: amount" lines helps us compare quotes quickly.', '',
+        'Regards,', 'Bhumi Varahi Impex Pvt Ltd', NOTIFY_EMAIL]).join('\n');
+    out.push({ vendor: v.name, kind: kind, email: v.email, subject: 'Rate request ' + d.ref + ': ' + d.containers + ' x 20ft ' + (d.commodity || 'cargo') + ', ' + d.pol + ' to ' + (d.finalDest || d.pod), body: body });
+  });
+  return out;
+}
+
+function draftQuoteRequests() {
+  const ui = SpreadsheetApp.getUi();
+  const active = SpreadsheetApp.getActiveSheet();
+  const rfqs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  let row;
+  if (active.getName().indexOf(IC_PREFIX) === 0) row = findRfqRow_(rfqs, active.getName().slice(IC_PREFIX.length));
+  else if (active.getName() === SHEET_NAME) row = active.getActiveRange().getRow();
+  if (!row || row < 2) { ui.alert('Click a cell in an RFQ row, or open its "IC ..." input tab, first.'); return; }
+  const vs = vendorSheet_();
+  const vendors = vs.getLastRow() < 2 ? [] : vs.getRange(2, 1, vs.getLastRow() - 1, 6).getValues().filter(r => r[0] || r[2])
+    .map(r => ({ name: String(r[0]), type: String(r[1]), email: String(r[2]).trim(), contact: String(r[3]), cover: String(r[4]), active: String(r[5]) }));
+  if (!vendors.length) { vs.activate(); ui.alert('Add your forwarders, CHAs, transporters and destination clearing agents to the "' + VENDOR_TAB + '" tab first, then run this again.'); return; }
+  const cfg = setupCosting_();
+  const p = rfqFromRow_(rfqs, row);
+  const ic = icSheet_(p, cfg, true);
+  const inp = readIc_(ic.sheet), V = inp.v;
+  const s = k => (V[k] === '' || V[k] == null) ? '' : String(V[k]);
+  const mt = num_(V.qty_mt) || quantityMt_(p.quantity) || 0, bagKg = num_(V.bag_kg) || 50;
+  const reqs = quoteRequests_(vendors, { ref: p.ref, commodity: s('commodity'), variety: s('variety'), hs: s('hs_code'), qty: mt,
+    containers: Math.max(1, Math.ceil(mt / (num_(V.mt_per_ctr) || 25) - 1e-9)), bags: Math.ceil(mt * 1000 / bagKg), bagKg: bagKg,
+    pol: s('pol'), pod: s('pod'), finalDest: s('final_dest'), country: s('buyer_country'), millLocation: s('mill_location'),
+    window: s('shipment_window'), incoterm: s('incoterm'), payload: s('payload'), lines: inp.lines });
+  if (!reqs.length) { ui.alert('None of the active vendors in "' + VENDOR_TAB + '" cover ' + [s('pol'), s('pod'), s('final_dest')].filter(Boolean).join(' / ') + '. Check the Type, Email and Ports columns.'); return; }
+  reqs.forEach(r => GmailApp.createDraft(r.email, r.subject, r.body, { name: 'Bhumi Varahi Impex', replyTo: NOTIFY_EMAIL }));
+  const note = rfqs.getRange(row, 11);
+  const stamp = 'Quote requests drafted ' + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd MMM') + ': ' + reqs.map(r => r.vendor).join(', ');
+  note.setValue(note.getValue() ? note.getValue() + ' · ' + stamp : stamp);
+  ui.alert(reqs.length + ' Gmail draft(s) created. Nothing has been sent.\n\n' + reqs.map(r => '- ' + r.vendor + ' (' + r.email + ')').join('\n') +
+    '\n\nOpen Gmail > Drafts, check each one and press Send. When the replies come in, type the amounts into columns H and I of "' + ic.sheet.getName() + '".');
+}
+
 // Appends every quote and web estimate of a costing run to the "Logistics Quote Log" tab,
 // so rates can be compared across destinations and over time.
 function logQuotes_(ref, costNo, route, items) {
   const rows = [], day = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd MMM yyyy');
   items.forEach(x => {
-    x.quotes.forEach(q => rows.push([day, ref, costNo, route, x.label, x.unit, 'Written quote', q.vendor, q.amt, x.used == null ? '' : x.used]));
+    x.quotes.forEach(q => rows.push([q.date || day, ref, costNo, route, x.label, x.unit, 'Written quote', q.vendor, q.amt, x.used == null ? '' : x.used]));
     if (x.web != null) rows.push([day, ref, costNo, route, x.label, x.unit, 'Web estimate (Gemini)', '', x.web, x.used == null ? '' : x.used]);
   });
   if (!rows.length) return;
