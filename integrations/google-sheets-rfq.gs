@@ -1056,8 +1056,17 @@ function sensitivity_(ccIn, V, minMargin, minBuyer) {
 }
 
 // Defaults for a new input tab: RFQ answers first, then Cost Settings, then the sample dossier's terms.
+// Buyer's own quality limits from the RFQ text, e.g. "max 2% broken, max 12.5% moisture". Pure.
+function buyerSpec_(text) {
+  const t = String(text || '');
+  const pick = re => { const m = t.match(re); return m ? Number(m[1] || m[2]) : null; };
+  return { moisture: pick(/moisture[^0-9%]{0,15}(\d+(?:\.\d+)?)\s*%|(\d+(?:\.\d+)?)\s*%\s*(?:max\.?\s*)?moisture/i),
+           broken: pick(/broken[s]?[^0-9%]{0,15}(\d+(?:\.\d+)?)\s*%|(\d+(?:\.\d+)?)\s*%\s*(?:max\.?\s*)?broken/i) };
+}
+
 function icDefaults_(p, S) {
   const rice = /rice/i.test(p.commodity);
+  const bs = buyerSpec_(p.notes);
   const port = String(p.port || '');
   return {
     buyer: p.name, contact: p.contact, buyer_country: p.country, commodity: p.commodity, variety: p.grade,
@@ -1066,7 +1075,7 @@ function icDefaults_(p, S) {
     bag_type: 'Export-grade virgin jute', branding: p.label, incoterm: p.incoterm,
     payment_option: /l\/?c/i.test(p.payment) ? 'B: 100% irrevocable confirmed sight L/C' : 'A: 30% advance + 70% against BL copy',
     shipment_window: p.shipment, validity_days: setting_(S, 'Quotation validity (days)', 7),
-    q_moisture: rice ? '13.5%' : '', q_broken: rice ? '5%' : '', q_fm_inorg: rice ? '0.1%' : '', q_fm_org: rice ? '0.4%' : '',
+    q_moisture: bs.moisture != null ? bs.moisture + '%' : rice ? '13.5%' : '', q_broken: bs.broken != null ? bs.broken + '%' : rice ? '5%' : '', q_fm_inorg: rice ? '0.1%' : '', q_fm_org: rice ? '0.4%' : '',
     q_damaged: rice ? '1.5%' : '', cfs_facility: setting_(S, 'CHA / CFS partner', '') ? setting_(S, 'CHA / CFS partner', '') + ' CFS' : '', q_milling: rice ? 'Well-milled, 100% sortexed, double polished' : '',
     q_aflatoxin: 'Total B1+B2+G1+G2 < 4 ppb', q_heavy: 'Within WHO limits', q_other: p.notes && p.notes !== 'None' ? String(p.notes).replace(/^\[(AR|FR)\]\s*/, '') : '',
     mill_name: setting_(S, 'Mill name', ''), mill_location: setting_(S, 'Mill / origin', ''),
@@ -1434,6 +1443,8 @@ function decide_(o) {
     add('Buyer target price', o.target >= qPerMt ? 'GO' : m >= o.minMargin ? 'GO' : m > 0 ? 'WATCH' : 'STOP',
         'USD ' + o.target + '/MT vs our ' + qBasis + ' USD ' + qPerMt.toFixed(2) + '/MT' + (o.target < qPerMt ? '; at their price our margin would be ' + pct(m) : ''));
   } else add('Buyer target price', 'WATCH', 'Not given; confirm the buyer accepts USD ' + qPerMt.toFixed(2) + '/MT ' + qBasis);
+  // 2a. Our quality spec against what the buyer asked for
+  if (o.specGaps && o.specGaps.length) add('Buyer quality spec', 'WATCH', o.specGaps.join('; ') + '. Quote the buyer\'s spec and make sure the mill price is for that spec, or agree ours in writing.');
   // 2b. Container fill
   if (o.fill && o.fill.pct < 0.9) {
     const F = o.fill;
@@ -1513,6 +1524,7 @@ function costingRow_(sheet, row, cfg, inp) {
     rates: inp.lines, marginPct: marginPct, gstPct: num_(V.gst_pct) };
   const c = computeCosting_(ccIn);
   const pol = val('pol'), pod = val('pod'), finalDest = val('final_dest'), country = val('buyer_country');
+  const withC = x => !x ? country : country && String(x).toLowerCase().indexOf(country.toLowerCase()) >= 0 ? x : x + (country ? ', ' + country : '');
   const year = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy');
 
   // Destination research first, so its figures can fill empty buyer-side inputs.
@@ -1592,6 +1604,9 @@ function costingRow_(sheet, row, cfg, inp) {
     millDefault: num_(V.mill_price) === num_(setting_(S, 'Default mill price (INR per 100 kg)', '')), millPrice: num_(V.mill_price),
     inspectionNeeded: !!val('dest_inspection'), inspectionCosted: inspectionCosted, inspection: val('dest_inspection'), inspectionAi: isAi('dest_inspection'),
     fobBenchmark: num_(V.fob_benchmark), benchAi: isAi('fob_benchmark'), logistics: logistics,
+    specGaps: (() => { const b = buyerSpec_(p.notes), g = [];
+      [['moisture', 'q_moisture'], ['broken', 'q_broken']].forEach(x => { const ours = num_(V[x[1]]); if (b[x[0]] != null && ours != null && ours > b[x[0]]) g.push('Buyer asked max ' + b[x[0]] + '% ' + x[0] + ', we quote ' + ours + '%'); });
+      return g; })(),
     quoteBasis: termPerMt ? buyerTerm + ' ' + (pod || 'destination') : buyerTerm === 'FOB' ? 'FOB' : buyerTerm, quotePerMt: termPerMt,
     freightAi: isAi('b_freight'), freightQuote: (inp.src || {}).b_freight === 'quote', fill: fill, millUsdPerMt: num_(V.mill_price) * 10 / fx,
     priceRoom: sens.buyerMax != null ? { minFob: sens.minFob, buyerMax: sens.buyerMax, minMargin: minMarginS, minBuyer: minBuyerS } : null,
@@ -1684,7 +1699,7 @@ function costingRow_(sheet, row, cfg, inp) {
     ['Customs house agent', val('cha')], ['CFS facility', val('cfs_facility')],
     ['Port of loading', pol], ['Shipping line', val('shipping_line')],
     ['Discharge / transit port', pod + (finalDest ? ' (transit)' : '')],
-    ['Final destination', finalDest ? finalDest + ', ' + country + (val('corridor') ? ' via ' + val('corridor') : '') : (pod ? pod + ', ' : '') + country + ' (delivered at the port, no inland leg)'],
+    ['Final destination', finalDest ? finalDest + ', ' + country + (val('corridor') ? ' via ' + val('corridor') : '') : withC(pod) + ' (delivered at the port, no inland leg)'],
     ['Transit status', val('transit_regime')], ['Destination inspection', val('dest_inspection')],
     ['Shipment window', val('shipment_window')],
   ]);
@@ -1695,7 +1710,7 @@ function costingRow_(sheet, row, cfg, inp) {
     .concat(val('q_milling') ? [val('q_milling')] : [])
     .concat([['Max broken', 'q_broken'], ['max moisture', 'q_moisture'], ['max foreign matter', 'q_fm_inorg']].filter(q => val(q[1])).length ? ['Specs: ' + [['max ' + val('q_broken') + ' brokens', 'q_broken'], ['max ' + val('q_moisture') + ' moisture', 'q_moisture'], ['max ' + val('q_fm_inorg') + ' foreign matter', 'q_fm_inorg']].filter(q => val(q[1])).map(q => q[0]).join(', ')] : [])
     .concat(['Packing: ' + c.bags + ' x ' + bagKg + ' kg ' + (val('bag_type') || 'bags'), 'Delivery: loaded on board at ' + pol])
-    .concat(finalDest ? ['In transit to ' + finalDest + ', ' + country + ' via ' + pod] : ['Destination: ' + pod + ', ' + country]);
+    .concat(finalDest ? ['In transit to ' + finalDest + ', ' + country + ' via ' + pod] : ['Destination: ' + withC(pod)]);
   table([
     ['Item description & specifications', 'Quantity', 'Unit rate (FOB)', 'Total (FOB)'],
     [commodityFull + (val('crop_year') ? ' (crop ' + val('crop_year') + ')' : '') + '\n- ' + specs.join('\n- '), mt + ' MT\n(' + c.bags + ' bags)',
@@ -1929,6 +1944,8 @@ function costingRow_(sheet, row, cfg, inp) {
     ['Mill quality & moisture', 'Lot meets ' + [val('q_moisture') ? 'moisture < ' + val('q_moisture') : '', val('q_broken') ? 'broken < ' + val('q_broken') : ''].filter(Boolean).join(', ') + ' and sortex purity', 'Procurement'],
     ['Pre-FOB inland insurance', 'Policy bound from mill gate to CFS', 'Finance'],
     ['Bag strength', c.bags + ' bags undamaged, export weave, double-stitched', 'Packaging'],
+  ].concat(fig.labelling_rule ? [['Bag labelling (destination rule)', String(fig.labelling_rule) + AI, 'Packaging']] : [])
+   .concat(p.sample && !/^no/i.test(String(p.sample)) ? [['Buyer sample', 'Buyer asked for a sample (' + p.sample + '): courier a sealed sample of this lot and get written approval before stuffing', 'Quality']] : []).concat([
     ['Lorry freight & lead time', 'Rate fixed; dispatch 5-6 days before cut-off', 'Logistics'],
     ['Heavy container & OWS', 'Booking specifies ' + or('payload', 'heavy-tested box') + '; buyer bears overweight surcharge', 'CHA desk'],
     ['CHA desk', 'Shipping bill, EDI and examination arranged; CTO / SRF pass-through checked', 'CHA desk'],
@@ -1940,7 +1957,7 @@ function costingRow_(sheet, row, cfg, inp) {
     ['Transit B/L clause', finalDest ? 'Liner instructed: in transit to ' + finalDest : 'Not a transit shipment', 'Documentation'],
     ['Payment terms', 'Buyer accepted ' + or('payment_option'), 'Finance'],
     ['Bank e-BRC / EDPMS closure', 'Bank handling and courier reserve budgeted', 'Treasury'],
-  ].map(x => ['[  ]'].concat(x))), { widths: [40, 140, 240, 90] });
+  ]).map(x => ['[  ]'].concat(x))), { widths: [40, 140, 240, 90] });
 
   // ---------- 15. AI research ----------
   if (research) {
